@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="32" fill="#0d1117"/>
+  <!-- Sablier stylisé — sand = sable -->
+  <path d="M80 48 h96 v8 l-40 56 40 56 v8 H80 v-8 l40-56 -40-56z" fill="none" stroke="#58a6ff" stroke-width="6" stroke-linejoin="round"/>
+  <!-- Grain de sable qui tombe -->
+  <line x1="128" y1="120" x2="128" y2="144" stroke="#58a6ff" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <!-- Sable accumulé en bas -->
+  <path d="M96 168 Q128 148 160 168 v8 H96z" fill="#58a6ff" opacity="0.4"/>
+  <!-- Sable en haut -->
+  <path d="M96 56 h64 v4 Q128 76 96 60z" fill="#58a6ff" opacity="0.3"/>
+</svg>
