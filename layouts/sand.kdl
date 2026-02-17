@@ -17,7 +17,9 @@ layout {
         // Colonne droite ~40% : lazygit + yazi
         pane split_direction="horizontal" size="40%" {
             pane command="lazygit"
-            pane command="yazi"
+            pane command="yazi" {
+                args "."
+            }
         }
     }
 }

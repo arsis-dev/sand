@@ -79,7 +79,9 @@ if [[ -n "$WORKSPACE" ]]; then
             pane size="60%" cwd="$dir"
             pane split_direction="horizontal" size="40%" {
                 pane command="lazygit" cwd="$dir"
-                pane command="yazi" cwd="$dir"
+                pane command="yazi" cwd="$dir" {
+                    args "$dir"
+                }
             }
         }
     }
@@ -287,7 +289,9 @@ end tell"
             pane size="60%" cwd="$dir"
             pane split_direction="horizontal" size="40%" {
                 pane command="lazygit" cwd="$dir"
-                pane command="yazi" cwd="$dir"
+                pane command="yazi" cwd="$dir" {
+                    args "$dir"
+                }
             }
         }
     }
