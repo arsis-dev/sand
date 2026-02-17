@@ -114,20 +114,48 @@ if [[ "$ACTION" == "create" && "$LAYOUT" == "default" ]]; then
     done
 
     if [[ ${#SUBPROJECTS[@]} -ge 2 ]]; then
-        echo "Répertoire $PROJECT_NAME contient ${#SUBPROJECTS[@]} projets :"
-        for sub in "${SUBPROJECTS[@]}"; do
-            echo "  - $(basename "$sub")"
-        done
-        echo ""
-        echo -n "Ouvrir en tabs ? [O/n] "
-        read -r REPLY
-        REPLY="${REPLY:-o}"
-        if [[ "$REPLY" =~ ^[OoYy]$ ]]; then
+        # Sélection des sous-projets
+        SELECTED=()
+        if command -v fzf >/dev/null 2>&1; then
+            LIST=""
+            for sub in "${SUBPROJECTS[@]}"; do
+                LIST+="$(basename "$sub")"$'\n'
+            done
+            PICKS="$(echo "$LIST" | sed '/^$/d' | fzf --multi --prompt="Tabs > " --header="Tab/Shift+Tab pour sélectionner, Entrée pour valider" --height=15 --reverse)" || exit 0
+            while IFS= read -r name; do
+                for sub in "${SUBPROJECTS[@]}"; do
+                    [[ "$(basename "$sub")" == "$name" ]] && SELECTED+=("$sub")
+                done
+            done <<< "$PICKS"
+        else
+            echo "Répertoire $PROJECT_NAME contient ${#SUBPROJECTS[@]} projets :"
+            for i in "${!SUBPROJECTS[@]}"; do
+                echo "  $((i+1))) $(basename "${SUBPROJECTS[$i]}")"
+            done
+            echo -n "Numéros (ex: 1 2 3, ou * pour tous) > "
+            read -r NUMS
+            if [[ "$NUMS" == "*" ]]; then
+                SELECTED=("${SUBPROJECTS[@]}")
+            else
+                for n in $NUMS; do
+                    idx=$((n-1))
+                    [[ -n "${SUBPROJECTS[$idx]:-}" ]] && SELECTED+=("${SUBPROJECTS[$idx]}")
+                done
+            fi
+        fi
+
+        [[ ${#SELECTED[@]} -eq 0 ]] && { echo "Aucun projet sélectionné." >&2; exit 0; }
+
+        if [[ ${#SELECTED[@]} -eq 1 ]]; then
+            # Un seul projet → session simple
+            PROJECT_DIR="$(cd "${SELECTED[0]}" && pwd)"
+            PROJECT_NAME="$(basename "$PROJECT_DIR")"
+        else
             TMPFILE="$(mktemp /tmp/sand-auto-XXXXXX)"
             trap 'rm -f "$TMPFILE"' EXIT
 
             echo "layout {" > "$TMPFILE"
-            for sub in "${SUBPROJECTS[@]}"; do
+            for sub in "${SELECTED[@]}"; do
                 sub="$(cd "$sub" && pwd)"
                 name="$(basename "$sub")"
                 cat >> "$TMPFILE" <<TABEOF
@@ -155,7 +183,7 @@ TABEOF
                 exec zellij attach "$PROJECT_NAME"
             fi
 
-            echo "Lancement de ${#SUBPROJECTS[@]} tabs..."
+            echo "Lancement de ${#SELECTED[@]} tabs..."
             exec zellij --session "$PROJECT_NAME" --new-session-with-layout "$TMPFILE"
         fi
     fi
