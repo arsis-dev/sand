@@ -9,9 +9,14 @@ layout {
 
     // Zone de travail : colonnes
     pane split_direction="vertical" {
-        // Claude Code (panneau principal ~60%)
-        pane size="60%" {
-            // Le shell par défaut, l'utilisateur lance ce qu'il veut
+        // Colonne gauche ~60% : terminal principal + terminal secondaire
+        pane split_direction="horizontal" size="60%" {
+            pane size="70%" {
+                // Terminal principal (Claude Code, etc.)
+            }
+            pane size="30%" {
+                // Terminal secondaire
+            }
         }
 
         // Colonne droite ~40% : lazygit + yazi

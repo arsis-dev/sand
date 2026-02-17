@@ -76,7 +76,10 @@ if [[ -n "$WORKSPACE" ]]; then
             plugin location="zellij:compact-bar"
         }
         pane split_direction="vertical" {
-            pane size="60%" cwd="$dir"
+            pane split_direction="horizontal" size="60%" {
+                pane size="70%" cwd="$dir"
+                pane size="30%" cwd="$dir"
+            }
             pane split_direction="horizontal" size="40%" {
                 pane command="lazygit" cwd="$dir"
                 pane command="yazi" cwd="$dir" {
@@ -369,7 +372,10 @@ end tell"
             plugin location="zellij:compact-bar"
         }
         pane split_direction="vertical" {
-            pane size="60%" cwd="$dir"
+            pane split_direction="horizontal" size="60%" {
+                pane size="70%" cwd="$dir"
+                pane size="30%" cwd="$dir"
+            }
             pane split_direction="horizontal" size="40%" {
                 pane command="lazygit" cwd="$dir"
                 pane command="yazi" cwd="$dir" {
