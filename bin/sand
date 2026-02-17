@@ -4,6 +4,7 @@
 # Usage : sand [répertoire] [options]
 #   sand                     Nouvelle session dans le répertoire courant
 #   sand ~/projet            Nouvelle session dans un répertoire spécifique
+#   sand diderot             Ouvrir un workspace nommé (~/.config/sand/workspaces/)
 #   sand --solo              Claude Code seul
 #   sand --restore / -r      Réattacher la dernière session (ou choisir via fzf)
 #   sand --attach / -a       Réattacher la session du projet courant
@@ -20,12 +21,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SCRIPT_DIR}/../layouts}"
+WORKSPACES_DIR="${SAND_WORKSPACES_DIR:-${HOME}/.config/sand/workspaces}"
 
 # --- Parsing des arguments ---
 LAYOUT="default"
 ACTION="create"
 BACKEND="zellij"
 PROJECT_DIR=""
+WORKSPACE=""
 OPEN_DIRS=()
 
 for arg in "$@"; do
@@ -39,16 +42,63 @@ for arg in "$@"; do
         --open)           ACTION="open" ;;
         --tmux)           BACKEND="tmux" ;;
         --ghostty)        BACKEND="ghostty" ;;
-        -*)               echo "Usage : sand [répertoire] [--solo|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
+        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
         *)
             if [[ "$ACTION" == "open" ]]; then
                 OPEN_DIRS+=("$arg")
+            # Workspace nommé ? (pas un chemin, fichier dans workspaces/)
+            elif [[ -z "$PROJECT_DIR" && ! "$arg" =~ ^[/~.] && -f "${WORKSPACES_DIR}/${arg}" ]]; then
+                WORKSPACE="$arg"
             else
                 PROJECT_DIR="$arg"
             fi
             ;;
     esac
 done
+
+# --- Workspace nommé → générer le layout multi-tab ---
+if [[ -n "$WORKSPACE" ]]; then
+    WORKSPACE_FILE="${WORKSPACES_DIR}/${WORKSPACE}"
+
+    TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX)"
+    trap 'rm -f "$TMPFILE"' EXIT
+
+    echo "layout {" > "$TMPFILE"
+    TAB_COUNT=0
+    while IFS=' ' read -r name dir; do
+        [[ -z "$name" || "$name" =~ ^# ]] && continue
+        dir="${dir/#\~/$HOME}"
+        dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
+        echo "  + $name ($dir)"
+        cat >> "$TMPFILE" <<TABEOF
+    tab name="$name" cwd="$dir" {
+        pane size=1 borderless=true {
+            plugin location="zellij:compact-bar"
+        }
+        pane split_direction="vertical" {
+            pane size="60%"
+            pane split_direction="horizontal" size="40%" {
+                pane command="lazygit"
+                pane command="yazi"
+            }
+        }
+    }
+TABEOF
+        TAB_COUNT=$((TAB_COUNT + 1))
+    done < "$WORKSPACE_FILE"
+    echo "}" >> "$TMPFILE"
+
+    [[ "$TAB_COUNT" -eq 0 ]] && { echo "Workspace $WORKSPACE vide ou invalide." >&2; exit 1; }
+
+    # Réattacher si la session existe déjà
+    if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${WORKSPACE} "; then
+        echo "Workspace $WORKSPACE existant — réattachement."
+        exec zellij attach "$WORKSPACE"
+    fi
+
+    echo "Lancement du workspace $WORKSPACE ($TAB_COUNT tabs)..."
+    exec zellij --session "$WORKSPACE" --new-session-with-layout "$TMPFILE"
+fi
 
 PROJECT_DIR="${PROJECT_DIR:-.}"
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $1" >&2; exit 1; }
