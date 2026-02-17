@@ -1,0 +1,23 @@
+// sand.kdl — Layout SAND pour Zellij
+// Usage : zellij --layout sand --session mon-projet
+
+layout {
+    // Barre compacte en haut (onglets + statut)
+    pane size=1 borderless=true {
+        plugin location="zellij:compact-bar"
+    }
+
+    // Zone de travail : colonnes
+    pane split_direction="vertical" {
+        // Claude Code (panneau principal ~60%)
+        pane size="60%" {
+            // Le shell par défaut, l'utilisateur lance ce qu'il veut
+        }
+
+        // Colonne droite ~40% : lazygit + yazi
+        pane split_direction="horizontal" size="40%" {
+            pane command="lazygit"
+            pane command="yazi"
+        }
+    }
+}

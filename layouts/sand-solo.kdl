@@ -1,0 +1,8 @@
+// sand-solo.kdl — Layout SAND solo (Claude Code seul)
+
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:compact-bar"
+    }
+    pane
+}

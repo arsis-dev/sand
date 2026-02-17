@@ -1,0 +1,242 @@
+#!/bin/bash
+# sand — Lance un workspace SAND (Split/Across/Navigate/Destroy)
+#
+# Usage : sand [répertoire] [options]
+#   sand                     Workspace Zellij (défaut : Claude + lazygit + yazi)
+#   sand ~/projet            Idem dans un répertoire spécifique
+#   sand --solo              Claude Code seul
+#   sand --attach / -a       Réattacher une session existante
+#   sand --list / -l         Lister les sessions actives
+#   sand --kill              Fermer la session du projet
+#   sand --open dir1 dir2    Lancer plusieurs projets dans des tabs Zellij
+#
+# Backends :
+#   sand --tmux              Utiliser tmux au lieu de Zellij
+#   sand --open --ghostty dir1 dir2   Ouvrir dans des onglets Ghostty
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SCRIPT_DIR}/../layouts}"
+
+# --- Parsing des arguments ---
+LAYOUT="default"
+ACTION="create"
+BACKEND="zellij"
+PROJECT_DIR=""
+OPEN_DIRS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --solo)           LAYOUT="solo" ;;
+        --attach|-a)      ACTION="attach" ;;
+        --list|-l)        ACTION="list" ;;
+        --kill)           ACTION="kill" ;;
+        --open)           ACTION="open" ;;
+        --tmux)           BACKEND="tmux" ;;
+        --ghostty)        BACKEND="ghostty" ;;
+        -*)               echo "Usage : sand [répertoire] [--solo|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
+        *)
+            if [[ "$ACTION" == "open" ]]; then
+                OPEN_DIRS+=("$arg")
+            else
+                PROJECT_DIR="$arg"
+            fi
+            ;;
+    esac
+done
+
+PROJECT_DIR="${PROJECT_DIR:-.}"
+PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $1" >&2; exit 1; }
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+# --- Détection de nesting ---
+if [[ "$ACTION" == "create" ]]; then
+    if [[ -n "${ZELLIJ:-}" && "$BACKEND" == "zellij" ]]; then
+        echo "Déjà dans Zellij. Utilise Ctrl+O puis W pour switcher de session." >&2
+        exit 1
+    fi
+    if [[ -n "${TMUX:-}" && "$BACKEND" == "tmux" ]]; then
+        echo "Déjà dans tmux. Utilise prefix+s pour switcher de session." >&2
+        exit 1
+    fi
+fi
+
+# --- Vérification des dépendances ---
+missing=()
+if [[ "$BACKEND" == "zellij" ]]; then
+    command -v zellij >/dev/null 2>&1 || missing+=("zellij")
+elif [[ "$BACKEND" == "tmux" ]]; then
+    command -v tmux >/dev/null 2>&1 || missing+=("tmux")
+fi
+if [[ "$LAYOUT" != "solo" ]]; then
+    command -v lazygit >/dev/null 2>&1 || missing+=("lazygit")
+    command -v yazi    >/dev/null 2>&1 || missing+=("yazi")
+fi
+
+if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Dépendances manquantes : ${missing[*]}" >&2
+    echo "Installe-les avec : brew install ${missing[*]}" >&2
+    exit 1
+fi
+
+# =============================================
+# Actions rapides (indépendantes du backend)
+# =============================================
+
+if [[ "$ACTION" == "list" ]]; then
+    echo "Sessions SAND actives :"
+    if [[ "$BACKEND" == "tmux" ]]; then
+        tmux list-sessions 2>/dev/null || echo "  (aucune)"
+    else
+        zellij list-sessions 2>/dev/null || echo "  (aucune)"
+    fi
+    exit 0
+fi
+
+if [[ "$ACTION" == "kill" ]]; then
+    if [[ "$BACKEND" == "tmux" ]]; then
+        tmux kill-session -t "$PROJECT_NAME" 2>/dev/null && echo "Session $PROJECT_NAME fermée." || echo "Pas de session $PROJECT_NAME." >&2
+    else
+        if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
+            zellij delete-session "$PROJECT_NAME" --force
+            echo "Session $PROJECT_NAME fermée."
+        else
+            echo "Pas de session $PROJECT_NAME." >&2
+        fi
+    fi
+    exit 0
+fi
+
+if [[ "$ACTION" == "attach" ]]; then
+    if [[ "$BACKEND" == "tmux" ]]; then
+        cd "$PROJECT_DIR"
+        exec tmux attach-session -t "$PROJECT_NAME"
+    else
+        if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
+            cd "$PROJECT_DIR"
+            exec zellij attach "$PROJECT_NAME"
+        else
+            echo "Pas de session $PROJECT_NAME. Sessions disponibles :" >&2
+            zellij list-sessions 2>/dev/null || echo "  (aucune)"
+            exit 1
+        fi
+    fi
+fi
+
+# =============================================
+# --open : plusieurs projets
+# =============================================
+
+if [[ "$ACTION" == "open" ]]; then
+    [[ ${#OPEN_DIRS[@]} -eq 0 ]] && { echo "Usage : sand --open dir1 dir2 ..." >&2; exit 1; }
+
+    # --- Mode Ghostty : un onglet Ghostty par projet ---
+    if [[ "$BACKEND" == "ghostty" ]]; then
+        echo "Ouverture de ${#OPEN_DIRS[@]} onglet(s) Ghostty..."
+        SCRIPT='tell application "Ghostty" to activate
+delay 0.3
+tell application "System Events"
+  tell process "Ghostty"'
+        for dir in "${OPEN_DIRS[@]}"; do
+            dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
+            name="$(basename "$dir")"
+            echo "  + $name"
+            SCRIPT="$SCRIPT
+    keystroke \"t\" using command down
+    delay 1
+    keystroke \"sand ${dir}\"
+    delay 0.3
+    keystroke return
+    delay 1.5"
+        done
+        SCRIPT="$SCRIPT
+  end tell
+end tell"
+        osascript -e "$SCRIPT" 2>&1 || echo "Erreur osascript — vérifie les permissions Accessibilité."
+        exit 0
+    fi
+
+    # --- Mode Zellij (défaut) : un tab Zellij par projet ---
+    TMPFILE="$(mktemp /tmp/sand-multi-XXXXXX.kdl)"
+    trap 'rm -f "$TMPFILE"' EXIT
+
+    echo "layout {" > "$TMPFILE"
+    for dir in "${OPEN_DIRS[@]}"; do
+        dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
+        name="$(basename "$dir")"
+        echo "  + $name"
+        cat >> "$TMPFILE" <<TABEOF
+    tab name="$name" cwd="$dir" {
+        pane size=1 borderless=true {
+            plugin location="zellij:compact-bar"
+        }
+        pane split_direction="vertical" {
+            pane size="60%"
+            pane split_direction="horizontal" size="40%" {
+                pane command="lazygit"
+                pane command="yazi"
+            }
+        }
+    }
+TABEOF
+    done
+    echo "}" >> "$TMPFILE"
+
+    SESSION_NAME="sand-$(date +%H%M%S)"
+    echo "Lancement de ${#OPEN_DIRS[@]} tab(s) Zellij dans la session $SESSION_NAME..."
+    exec zellij --session "$SESSION_NAME" --new-session-with-layout "$TMPFILE"
+fi
+
+# =============================================
+# Lancement de session unique
+# =============================================
+
+# --- Backend tmux ---
+if [[ "$BACKEND" == "tmux" ]]; then
+    # Réattacher si la session existe
+    if tmux has-session -t "$PROJECT_NAME" 2>/dev/null; then
+        echo "Session tmux $PROJECT_NAME existante — réattachement."
+        cd "$PROJECT_DIR"
+        exec tmux attach-session -t "$PROJECT_NAME"
+    fi
+
+    cd "$PROJECT_DIR"
+
+    if [[ "$LAYOUT" == "solo" ]]; then
+        exec tmux new-session -s "$PROJECT_NAME"
+    fi
+
+    # Layout : Claude (gauche 60%) | lazygit + yazi (droite 40%)
+    tmux new-session -d -s "$PROJECT_NAME" -x "$(tput cols)" -y "$(tput lines)"
+    tmux split-window -h -t "$PROJECT_NAME" -p 40
+    tmux split-window -v -t "$PROJECT_NAME:0.1"
+    tmux send-keys -t "$PROJECT_NAME:0.1" "lazygit" Enter
+    tmux send-keys -t "$PROJECT_NAME:0.2" "yazi" Enter
+    tmux select-pane -t "$PROJECT_NAME:0.0"
+    exec tmux attach-session -t "$PROJECT_NAME"
+fi
+
+# --- Backend Zellij (défaut) ---
+
+# Réattacher si la session existe
+if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
+    echo "Session $PROJECT_NAME existante — réattachement."
+    cd "$PROJECT_DIR"
+    exec zellij attach "$PROJECT_NAME"
+fi
+
+# Choisir le layout
+if [[ "$LAYOUT" == "solo" ]]; then
+    LAYOUT_FILE="${LAYOUT_DIR}/sand-solo.kdl"
+else
+    LAYOUT_FILE="${LAYOUT_DIR}/sand.kdl"
+fi
+
+if [[ ! -f "$LAYOUT_FILE" ]]; then
+    echo "Layout introuvable : $LAYOUT_FILE" >&2
+    exit 1
+fi
+
+cd "$PROJECT_DIR"
+exec zellij --session "$PROJECT_NAME" --new-session-with-layout "$LAYOUT_FILE"
