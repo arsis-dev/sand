@@ -220,7 +220,7 @@ end tell"
     fi
 
     # --- Mode Zellij (défaut) : un tab Zellij par projet ---
-    TMPFILE="$(mktemp /tmp/sand-multi-XXXXXX.kdl)"
+    TMPFILE="$(mktemp /tmp/sand-multi-XXXXXX)"
     trap 'rm -f "$TMPFILE"' EXIT
 
     echo "layout {" > "$TMPFILE"
