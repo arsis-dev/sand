@@ -8,7 +8,8 @@
 #   sand --restore / -r      Réattacher la dernière session (ou choisir via fzf)
 #   sand --attach / -a       Réattacher la session du projet courant
 #   sand --list / -l         Lister les sessions actives
-#   sand --kill              Fermer la session du projet
+#   sand --kill / -k         Fermer une session (sélecteur fzf)
+#   sand --kill-all / -K     Fermer toutes les sessions
 #   sand --open dir1 dir2    Lancer plusieurs projets dans des tabs Zellij
 #
 # Backends :
@@ -33,7 +34,8 @@ for arg in "$@"; do
         --restore|-r)     ACTION="restore" ;;
         --attach|-a)      ACTION="attach" ;;
         --list|-l)        ACTION="list" ;;
-        --kill)           ACTION="kill" ;;
+        --kill|-k)        ACTION="kill" ;;
+        --kill-all|-K)    ACTION="kill-all" ;;
         --open)           ACTION="open" ;;
         --tmux)           BACKEND="tmux" ;;
         --ghostty)        BACKEND="ghostty" ;;
@@ -130,14 +132,40 @@ fi
 
 if [[ "$ACTION" == "kill" ]]; then
     if [[ "$BACKEND" == "tmux" ]]; then
-        tmux kill-session -t "$PROJECT_NAME" 2>/dev/null && echo "Session $PROJECT_NAME fermée." || echo "Pas de session $PROJECT_NAME." >&2
+        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "Aucune session active." >&2; exit 1; }
     else
-        if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
-            zellij delete-session "$PROJECT_NAME" --force
-            echo "Session $PROJECT_NAME fermée."
-        else
-            echo "Pas de session $PROJECT_NAME." >&2
-        fi
+        SESSIONS="$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}')" || true
+    fi
+
+    [[ -z "$SESSIONS" ]] && { echo "Aucune session active." >&2; exit 1; }
+
+    # Si un répertoire est passé explicitement, tuer cette session
+    if [[ "$PROJECT_DIR" != "$(pwd)" ]] || [[ $# -gt 0 && "$1" != "--kill" && "$1" != "-k" ]]; then
+        SESSION="$PROJECT_NAME"
+    elif command -v fzf >/dev/null 2>&1; then
+        SESSION="$(echo "$SESSIONS" | fzf --prompt="Fermer > " --height=10 --reverse)" || exit 0
+    else
+        echo "Sessions disponibles :"
+        echo "$SESSIONS" | nl
+        echo -n "Numéro > "
+        read -r NUM
+        SESSION="$(echo "$SESSIONS" | sed -n "${NUM}p")"
+        [[ -z "$SESSION" ]] && { echo "Choix invalide." >&2; exit 1; }
+    fi
+
+    if [[ "$BACKEND" == "tmux" ]]; then
+        tmux kill-session -t "$SESSION" 2>/dev/null && echo "Session $SESSION fermée." || echo "Pas de session $SESSION." >&2
+    else
+        zellij delete-session "$SESSION" --force 2>/dev/null && echo "Session $SESSION fermée." || echo "Pas de session $SESSION." >&2
+    fi
+    exit 0
+fi
+
+if [[ "$ACTION" == "kill-all" ]]; then
+    if [[ "$BACKEND" == "tmux" ]]; then
+        tmux kill-server 2>/dev/null && echo "Toutes les sessions tmux fermées." || echo "Aucune session active." >&2
+    else
+        zellij delete-all-sessions --force --yes 2>/dev/null && echo "Toutes les sessions Zellij fermées." || echo "Aucune session active." >&2
     fi
     exit 0
 fi
