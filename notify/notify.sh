@@ -31,15 +31,15 @@ sync_pack() {
     local pack="$1"
     local pack_dir="$SOUNDS_DIR/$pack"
 
-    # Nettoyer les anciens sons
-    rm -f "$SYSTEM_DIR"/SandStop_*.aiff "$SYSTEM_DIR"/SandQuestion_*.aiff "$SYSTEM_DIR"/SandTool_*.aiff
+    # Nettoyer tous les sons Sand
+    rm -f "$SYSTEM_DIR"/Sand_*.aiff
 
     # Sons "stop"
     local i=0
     for f in "$pack_dir"/stop/*.aiff; do
         [ -f "$f" ] || continue
         i=$((i + 1))
-        cp "$f" "$SYSTEM_DIR/SandStop_${i}.aiff"
+        cp "$f" "$SYSTEM_DIR/Sand_${pack}_stop_${i}.aiff"
     done
 
     # Sons "question"
@@ -47,7 +47,7 @@ sync_pack() {
     for f in "$pack_dir"/question/*.aiff; do
         [ -f "$f" ] || continue
         j=$((j + 1))
-        cp "$f" "$SYSTEM_DIR/SandQuestion_${j}.aiff"
+        cp "$f" "$SYSTEM_DIR/Sand_${pack}_question_${j}.aiff"
     done
 
     # Sons "tool" (son subtil quand Claude veut utiliser un outil)
@@ -55,12 +55,12 @@ sync_pack() {
     for f in "$pack_dir"/tool/*.aiff; do
         [ -f "$f" ] || continue
         k=$((k + 1))
-        cp "$f" "$SYSTEM_DIR/SandTool_${k}.aiff"
+        cp "$f" "$SYSTEM_DIR/Sand_${pack}_tool_${k}.aiff"
     done
 
     # Fallback : copier Tink si aucun son tool dans le pack
     if [ "$k" -eq 0 ]; then
-        cp /System/Library/Sounds/Tink.aiff "$SYSTEM_DIR/SandTool_1.aiff"
+        cp /System/Library/Sounds/Tink.aiff "$SYSTEM_DIR/Sand_${pack}_tool_1.aiff"
         k=1
     fi
 
@@ -74,13 +74,9 @@ sync_pack() {
 # Jouer un son aléatoire
 play_random() {
     local type="$1"  # stop, question ou tool
-    local prefix
-    case "$type" in
-        stop) prefix="SandStop" ;;
-        question) prefix="SandQuestion" ;;
-        tool) prefix="SandTool" ;;
-        *) prefix="SandStop" ;;
-    esac
+    local pack
+    pack=$(get_current)
+    local prefix="Sand_${pack}_${type}"
 
     local count
     count=$(ls "$SYSTEM_DIR"/${prefix}_*.aiff 2>/dev/null | wc -l | tr -d ' ')
