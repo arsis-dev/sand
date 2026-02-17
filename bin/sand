@@ -2,10 +2,11 @@
 # sand — Lance un workspace SAND (Split/Across/Navigate/Destroy)
 #
 # Usage : sand [répertoire] [options]
-#   sand                     Workspace Zellij (défaut : Claude + lazygit + yazi)
-#   sand ~/projet            Idem dans un répertoire spécifique
+#   sand                     Nouvelle session dans le répertoire courant
+#   sand ~/projet            Nouvelle session dans un répertoire spécifique
 #   sand --solo              Claude Code seul
-#   sand --attach / -a       Réattacher une session existante
+#   sand --restore / -r      Réattacher la dernière session (ou choisir via fzf)
+#   sand --attach / -a       Réattacher la session du projet courant
 #   sand --list / -l         Lister les sessions actives
 #   sand --kill              Fermer la session du projet
 #   sand --open dir1 dir2    Lancer plusieurs projets dans des tabs Zellij
@@ -29,6 +30,7 @@ OPEN_DIRS=()
 for arg in "$@"; do
     case "$arg" in
         --solo)           LAYOUT="solo" ;;
+        --restore|-r)     ACTION="restore" ;;
         --attach|-a)      ACTION="attach" ;;
         --list|-l)        ACTION="list" ;;
         --kill)           ACTION="kill" ;;
@@ -92,6 +94,38 @@ if [[ "$ACTION" == "list" ]]; then
         zellij list-sessions 2>/dev/null || echo "  (aucune)"
     fi
     exit 0
+fi
+
+if [[ "$ACTION" == "restore" ]]; then
+    if [[ "$BACKEND" == "tmux" ]]; then
+        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "Aucune session active." >&2; exit 1; }
+    else
+        SESSIONS="$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}')" || true
+    fi
+
+    [[ -z "$SESSIONS" ]] && { echo "Aucune session active." >&2; exit 1; }
+
+    # Une seule session → réattacher directement
+    COUNT="$(echo "$SESSIONS" | wc -l | tr -d ' ')"
+    if [[ "$COUNT" -eq 1 ]]; then
+        SESSION="$SESSIONS"
+    elif command -v fzf >/dev/null 2>&1; then
+        SESSION="$(echo "$SESSIONS" | fzf --prompt="Session > " --height=10 --reverse)" || exit 0
+    else
+        echo "Sessions disponibles :"
+        echo "$SESSIONS" | nl
+        echo -n "Numéro > "
+        read -r NUM
+        SESSION="$(echo "$SESSIONS" | sed -n "${NUM}p")"
+        [[ -z "$SESSION" ]] && { echo "Choix invalide." >&2; exit 1; }
+    fi
+
+    echo "Réattachement à $SESSION..."
+    if [[ "$BACKEND" == "tmux" ]]; then
+        exec tmux attach-session -t "$SESSION"
+    else
+        exec zellij attach "$SESSION"
+    fi
 fi
 
 if [[ "$ACTION" == "kill" ]]; then
