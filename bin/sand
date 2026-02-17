@@ -106,6 +106,61 @@ PROJECT_DIR="${PROJECT_DIR:-.}"
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $1" >&2; exit 1; }
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 
+# --- Détection de sous-projets (répertoire parent avec plusieurs projets git) ---
+if [[ "$ACTION" == "create" && "$LAYOUT" == "default" ]]; then
+    SUBPROJECTS=()
+    for sub in "$PROJECT_DIR"/*/; do
+        [[ -d "${sub}.git" || -f "${sub}.git" ]] && SUBPROJECTS+=("$sub")
+    done
+
+    if [[ ${#SUBPROJECTS[@]} -ge 2 ]]; then
+        echo "Répertoire $PROJECT_NAME contient ${#SUBPROJECTS[@]} projets :"
+        for sub in "${SUBPROJECTS[@]}"; do
+            echo "  - $(basename "$sub")"
+        done
+        echo ""
+        echo -n "Ouvrir en tabs ? [O/n] "
+        read -r REPLY
+        REPLY="${REPLY:-o}"
+        if [[ "$REPLY" =~ ^[OoYy]$ ]]; then
+            TMPFILE="$(mktemp /tmp/sand-auto-XXXXXX)"
+            trap 'rm -f "$TMPFILE"' EXIT
+
+            echo "layout {" > "$TMPFILE"
+            for sub in "${SUBPROJECTS[@]}"; do
+                sub="$(cd "$sub" && pwd)"
+                name="$(basename "$sub")"
+                cat >> "$TMPFILE" <<TABEOF
+    tab name="$name" cwd="$sub" {
+        pane size=1 borderless=true {
+            plugin location="zellij:compact-bar"
+        }
+        pane split_direction="vertical" {
+            pane size="60%" cwd="$sub"
+            pane split_direction="horizontal" size="40%" {
+                pane command="lazygit" cwd="$sub"
+                pane command="yazi" cwd="$sub" {
+                    args "$sub"
+                }
+            }
+        }
+    }
+TABEOF
+            done
+            echo "}" >> "$TMPFILE"
+
+            # Réattacher si la session existe
+            if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
+                echo "Session $PROJECT_NAME existante — réattachement."
+                exec zellij attach "$PROJECT_NAME"
+            fi
+
+            echo "Lancement de ${#SUBPROJECTS[@]} tabs..."
+            exec zellij --session "$PROJECT_NAME" --new-session-with-layout "$TMPFILE"
+        fi
+    fi
+fi
+
 # --- Détection de nesting ---
 if [[ "$ACTION" == "create" ]]; then
     if [[ -n "${ZELLIJ:-}" && "$BACKEND" == "zellij" ]]; then
