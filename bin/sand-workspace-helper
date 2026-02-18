@@ -174,7 +174,12 @@ def _panel_tmux_cmd(panel, cwd):
 
 
 def _generate_tab_tmux(session, tab_index, tab, root=None):
-    """Génère les commandes tmux pour un tab."""
+    """Génère les commandes tmux pour un tab.
+
+    Utilise la navigation relative (-L, -R, -D) au lieu d'indices absolus
+    pour être compatible avec n'importe quel base-index / pane-base-index.
+    Après chaque split-window, le pane actif est le nouveau pane créé.
+    """
     name = tab["name"]
     cwd = _resolve_dir(tab["dir"], root)
     layout = tab.get("layout", "default")
@@ -183,50 +188,64 @@ def _generate_tab_tmux(session, tab_index, tab, root=None):
 
     if tab_index == 0:
         lines.append(f'tmux new-session -d -s "{session}" -c "{cwd}" -x "$(tput cols)" -y "$(tput lines)"')
-        lines.append(f'tmux rename-window -t "{session}:0" "{name}"')
+        lines.append(f'tmux rename-window -t "{session}" "{name}"')
     else:
         lines.append(f'tmux new-window -t "{session}" -n "{name}" -c "{cwd}"')
 
-    window = f"{session}:{tab_index}"
+    # Après new-session/new-window, le pane unique est actif
 
     if layout == "solo":
-        pass  # un seul pane, rien à faire
+        pass
 
     elif layout == "wide":
-        # Terminal en haut, panels en bas (split horizontal)
-        lines.append(f'tmux split-window -v -t "{window}.0" -c "{cwd}" -p 30')
-        pane_base = 1
-        for i, p in enumerate(panels):
-            if i > 0:
-                lines.append(f'tmux split-window -h -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
-            cmd = _panel_tmux_cmd(p, cwd)
+        # Terminal en haut, panels en bas (30%)
+        # Split vertical → le pane du bas est actif (c'est le nouveau)
+        lines.append(f'tmux split-window -v -c "{cwd}" -p 30')
+        # On est dans le pane du bas, envoyer la commande du premier panel
+        if panels:
+            cmd = _panel_tmux_cmd(panels[0], cwd)
             if cmd:
-                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
+                lines.append(f'tmux send-keys "{cmd}" Enter')
+            # Panels suivants : split horizontal à droite du pane actif
+            for p in panels[1:]:
+                lines.append(f'tmux split-window -h -c "{cwd}"')
+                cmd = _panel_tmux_cmd(p, cwd)
+                if cmd:
+                    lines.append(f'tmux send-keys "{cmd}" Enter')
+        # Revenir au terminal principal (pane du haut)
+        lines.append('tmux select-pane -t "{top}"')
 
     elif layout == "monitoring":
         # Terminal à gauche (60%), panels empilés à droite (40%)
-        lines.append(f'tmux split-window -h -t "{window}.0" -c "{cwd}" -p 40')
-        pane_base = 1
-        for i, p in enumerate(panels):
-            if i > 0:
-                lines.append(f'tmux split-window -v -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
-            cmd = _panel_tmux_cmd(p, cwd)
+        # Split horizontal → le pane de droite est actif
+        lines.append(f'tmux split-window -h -c "{cwd}" -p 40')
+        if panels:
+            cmd = _panel_tmux_cmd(panels[0], cwd)
             if cmd:
-                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
+                lines.append(f'tmux send-keys "{cmd}" Enter')
+            for p in panels[1:]:
+                lines.append(f'tmux split-window -v -c "{cwd}"')
+                cmd = _panel_tmux_cmd(p, cwd)
+                if cmd:
+                    lines.append(f'tmux send-keys "{cmd}" Enter')
+        # Revenir au terminal principal (pane de gauche)
+        lines.append('tmux select-pane -t "{left}"')
 
     else:
         # "default" : terminal (60%) | panels empilés (40%)
-        lines.append(f'tmux split-window -h -t "{window}.0" -c "{cwd}" -p 40')
-        pane_base = 1
-        for i, p in enumerate(panels):
-            if i > 0:
-                lines.append(f'tmux split-window -v -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
-            cmd = _panel_tmux_cmd(p, cwd)
+        # Split horizontal → pane de droite actif (40%)
+        lines.append(f'tmux split-window -h -c "{cwd}" -p 40')
+        if panels:
+            cmd = _panel_tmux_cmd(panels[0], cwd)
             if cmd:
-                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
-
-    # Sélectionner le pane principal (terminal)
-    lines.append(f'tmux select-pane -t "{window}.0"')
+                lines.append(f'tmux send-keys "{cmd}" Enter')
+            for p in panels[1:]:
+                lines.append(f'tmux split-window -v -c "{cwd}"')
+                cmd = _panel_tmux_cmd(p, cwd)
+                if cmd:
+                    lines.append(f'tmux send-keys "{cmd}" Enter')
+        # Revenir au terminal principal (pane de gauche)
+        lines.append('tmux select-pane -t "{left}"')
 
     return '\n'.join(lines)
 
@@ -278,12 +297,19 @@ def cmd_render_tmux(args):
         print("Aucun tab défini dans le workspace", file=sys.stderr)
         sys.exit(1)
 
-    lines = [f'#!/bin/bash', f'# Généré par sand-workspace-helper pour la session tmux "{session}"']
+    lines = [
+        '#!/bin/bash',
+        f'# Généré par sand-workspace-helper pour la session tmux "{session}"',
+    ]
     for i, tab in enumerate(tabs):
         lines.append(_generate_tab_tmux(session, i, tab, root))
 
+    # Supprimer la sidebar de sessions (status-left simplifié, pas de liste de sessions)
+    lines.append(f'tmux set-option -t "{session}" status-left "#[fg=#cccccc,bold] {session} #[default]│ "')
+    lines.append(f'tmux set-option -t "{session}" status-right ""')
+
     # Sélectionner la première fenêtre et attacher
-    lines.append(f'tmux select-window -t "{session}:0"')
+    lines.append(f'tmux select-window -t "{session}:{{start}}"')
     lines.append(f'exec tmux attach-session -t "{session}"')
 
     print('\n'.join(lines))
