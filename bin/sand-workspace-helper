@@ -20,23 +20,23 @@ from pathlib import Path
 # ─── Catalogue d'apps TUI ───────────────────────────────────────────
 
 APPS_CATALOG = {
-    "lazygit":     {"cmd": "lazygit",             "args": "",        "cat": "git",            "brew": "lazygit"},
-    "gitui":       {"cmd": "gitui",               "args": "",        "cat": "git",            "brew": "gitui"},
-    "yazi":        {"cmd": "yazi",                 "args": ".",       "cat": "fichiers",       "brew": "yazi"},
-    "broot":       {"cmd": "broot",                "args": "",        "cat": "fichiers",       "brew": "broot"},
-    "btop":        {"cmd": "btop",                 "args": "",        "cat": "monitoring",     "brew": "btop"},
-    "htop":        {"cmd": "htop",                 "args": "",        "cat": "monitoring",     "brew": "htop"},
-    "bottom":      {"cmd": "btm",                  "args": "",        "cat": "monitoring",     "brew": "bottom"},
-    "lazydocker":  {"cmd": "lazydocker",           "args": "",        "cat": "docker",         "brew": "lazydocker"},
-    "k9s":         {"cmd": "k9s",                  "args": "",        "cat": "kubernetes",     "brew": "k9s"},
-    "serpl":       {"cmd": "serpl",                "args": "",        "cat": "search/replace", "brew": "serpl"},
-    "bacon":       {"cmd": "bacon",                "args": "",        "cat": "watch (rust)",   "brew": "bacon"},
-    "watchexec":   {"cmd": "watchexec",            "args": "-- make", "cat": "watch",          "brew": "watchexec"},
-    "lnav":        {"cmd": "lnav",                 "args": "",        "cat": "logs",           "brew": "lnav"},
-    "posting":     {"cmd": "posting",              "args": "",        "cat": "http",           "brew": ""},
-    "pgcli":       {"cmd": "pgcli",                "args": "",        "cat": "database",       "brew": "pgcli"},
-    "lazysql":     {"cmd": "lazysql",              "args": "",        "cat": "database",       "brew": ""},
-    "shell":       {"cmd": "",                     "args": "",        "cat": "terminal",       "brew": ""},
+    "lazygit":     {"cmd": "lazygit",      "args": "",        "cat": "git",            "brew": "lazygit",     "desc": "Interface git interactive — staging, commits, branches, stash"},
+    "gitui":       {"cmd": "gitui",        "args": "",        "cat": "git",            "brew": "gitui",       "desc": "Client git TUI rapide écrit en Rust"},
+    "yazi":        {"cmd": "yazi",         "args": ".",       "cat": "fichiers",       "brew": "yazi",        "desc": "Gestionnaire de fichiers terminal rapide (Rust, async I/O)"},
+    "broot":       {"cmd": "broot",        "args": "",        "cat": "fichiers",       "brew": "broot",       "desc": "Explorateur d'arborescence avec recherche fuzzy"},
+    "btop":        {"cmd": "btop",         "args": "",        "cat": "monitoring",     "brew": "btop",        "desc": "Moniteur système — CPU, mémoire, disques, réseau, processus"},
+    "htop":        {"cmd": "htop",         "args": "",        "cat": "monitoring",     "brew": "htop",        "desc": "Moniteur de processus interactif (classique)"},
+    "bottom":      {"cmd": "btm",          "args": "",        "cat": "monitoring",     "brew": "bottom",      "desc": "Moniteur système graphique écrit en Rust"},
+    "lazydocker":  {"cmd": "lazydocker",   "args": "",        "cat": "docker",         "brew": "lazydocker",  "desc": "Dashboard Docker — conteneurs, images, volumes, logs"},
+    "k9s":         {"cmd": "k9s",          "args": "",        "cat": "kubernetes",     "brew": "k9s",         "desc": "Dashboard Kubernetes — pods, services, logs, exec"},
+    "serpl":       {"cmd": "serpl",        "args": "",        "cat": "search/replace", "brew": "serpl",       "desc": "Rechercher et remplacer interactif dans tout un projet"},
+    "bacon":       {"cmd": "bacon",        "args": "",        "cat": "watch (rust)",   "brew": "bacon",       "desc": "Watcher Rust — recompile et affiche erreurs/warnings en live"},
+    "watchexec":   {"cmd": "watchexec",    "args": "-- make", "cat": "watch",          "brew": "watchexec",   "desc": "Exécute une commande à chaque modification de fichier"},
+    "lnav":        {"cmd": "lnav",         "args": "",        "cat": "logs",           "brew": "lnav",        "desc": "Visualiseur de logs avancé avec filtrage et coloration"},
+    "posting":     {"cmd": "posting",      "args": "",        "cat": "http",           "brew": "",            "desc": "Client HTTP TUI — alternative à Postman dans le terminal",  "install": "pipx install posting"},
+    "pgcli":       {"cmd": "pgcli",        "args": "",        "cat": "database",       "brew": "pgcli",       "desc": "Client PostgreSQL avec autocomplétion et coloration SQL"},
+    "lazysql":     {"cmd": "lazysql",      "args": "",        "cat": "database",       "brew": "",            "desc": "Client SQL multi-bases (Postgres, MySQL, SQLite)",          "install": "go install github.com/jorgerojas26/lazysql@latest"},
+    "shell":       {"cmd": "",             "args": "",        "cat": "terminal",       "brew": "",            "desc": "Terminal vide — pour une session shell classique"},
 }
 
 # ─── Layout presets ──────────────────────────────────────────────────
@@ -424,19 +424,48 @@ def cmd_catalog(args):
     """Liste les apps TUI du catalogue avec statut d'installation."""
     fmt = args.format if hasattr(args, 'format') else 'text'
 
-    for name, info in sorted(APPS_CATALOG.items()):
-        cmd = info["cmd"]
-        cat = info["cat"]
-        brew = info.get("brew", "")
-        installed = "oui" if (not cmd or shutil.which(cmd)) else "non"
+    if fmt == 'fzf':
+        for name, info in sorted(APPS_CATALOG.items()):
+            cmd = info["cmd"]
+            installed = not cmd or shutil.which(cmd)
+            marker = "*" if installed else " "
+            print(f"{marker} {name:<15} ({info['cat']})")
+        return
 
-        if fmt == 'fzf':
-            # Format pour fzf multi-select
-            marker = "*" if installed == "oui" else " "
-            print(f"{marker} {name:<15} ({cat})")
-        else:
-            brew_info = f"  brew install {brew}" if brew else ""
-            print(f"  {name:<15} {cat:<18} {'✓' if installed == 'oui' else '✗'}{brew_info}")
+    # Grouper par catégorie
+    by_cat = {}
+    for name, info in sorted(APPS_CATALOG.items()):
+        cat = info["cat"]
+        by_cat.setdefault(cat, []).append((name, info))
+
+    cat_order = [
+        "git", "fichiers", "monitoring", "docker", "kubernetes",
+        "search/replace", "watch (rust)", "watch", "logs",
+        "http", "database", "terminal",
+    ]
+    # Catégories non listées dans l'ordre explicite
+    remaining = [c for c in by_cat if c not in cat_order]
+
+    for cat in cat_order + remaining:
+        if cat not in by_cat:
+            continue
+        print(f"\n  {cat.upper()}")
+        for name, info in by_cat[cat]:
+            cmd = info["cmd"]
+            brew = info.get("brew", "")
+            desc = info.get("desc", "")
+            installed = not cmd or shutil.which(cmd)
+
+            status = "✓" if installed else "✗"
+            install_hint = ""
+            if not installed:
+                custom_install = info.get("install", "")
+                if custom_install:
+                    install_hint = f"  ({custom_install})"
+                elif brew:
+                    install_hint = f"  (brew install {brew})"
+
+            print(f"    {status} {name:<15} {desc}{install_hint}")
 
 
 def cmd_wizard(args):
