@@ -2,6 +2,8 @@
 
 Multi-backend workspace manager for developers. Sand launches pre-configured terminal sessions with split panes, TUI apps, and project-aware layouts using Zellij, tmux, or Ghostty.
 
+Inspired by [Daniel Avila](https://x.com/dani_avila7)'s **SAND** mnemonic (**S**plit, **A**cross, **N**avigate, **D**estroy) for Ghostty panel management with Claude Code — [read his article](https://x.com/dani_avila7/status/2023151176758268349).
+
 ## Key Features
 
 - **Named workspaces** with TOML config — define tabs, layouts, and panel apps per project
