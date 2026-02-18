@@ -33,6 +33,9 @@ PROJECT_DIR=""
 WORKSPACE=""
 OPEN_DIRS=()
 TIPS=false
+WS_SUBCOMMAND=""
+WS_ARGS=()
+HELPER="${SCRIPT_DIR}/sand-workspace-helper"
 
 for arg in "$@"; do
     case "$arg" in
@@ -47,12 +50,25 @@ for arg in "$@"; do
         --tips)           TIPS=true ;;
         --tmux)           BACKEND="tmux" ;;
         --ghostty)        BACKEND="ghostty" ;;
-        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--keys|--tips|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
-        *)
+        workspace)
             if [[ "$ACTION" == "open" ]]; then
                 OPEN_DIRS+=("$arg")
-            # Workspace nommé ? (pas un chemin, fichier dans workspaces/)
-            elif [[ -z "$PROJECT_DIR" && ! "$arg" =~ ^[/~.] && -f "${WORKSPACES_DIR}/${arg}" ]]; then
+            else
+                ACTION="workspace"
+            fi
+            ;;
+        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--keys|--tips|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
+        *)
+            if [[ "$ACTION" == "workspace" ]]; then
+                if [[ -z "$WS_SUBCOMMAND" ]]; then
+                    WS_SUBCOMMAND="$arg"
+                else
+                    WS_ARGS+=("$arg")
+                fi
+            elif [[ "$ACTION" == "open" ]]; then
+                OPEN_DIRS+=("$arg")
+            # Workspace nommé ? (pas un chemin, fichier TOML ou ancien format dans workspaces/)
+            elif [[ -z "$PROJECT_DIR" && ! "$arg" =~ ^[/~.] && ( -f "${WORKSPACES_DIR}/${arg}.toml" || -f "${WORKSPACES_DIR}/${arg}" ) ]]; then
                 WORKSPACE="$arg"
             else
                 PROJECT_DIR="$arg"
@@ -94,6 +110,123 @@ if [[ "$ACTION" == "keys" ]]; then
     exit 0
 fi
 
+# =============================================
+# Sous-commande workspace
+# =============================================
+
+if [[ "$ACTION" == "workspace" ]]; then
+    case "${WS_SUBCOMMAND:-}" in
+        new)
+            python3 "$HELPER" wizard
+            ;;
+        list|ls)
+            echo "Workspaces Sand :"
+            for f in "$WORKSPACES_DIR"/*; do
+                [[ -f "$f" ]] || continue
+                [[ "$f" == *.bak ]] && continue
+                name=$(basename "$f" .toml)
+                if [[ "$f" == *.toml ]]; then
+                    desc=$(python3 -c "
+import tomllib, sys
+with open('$f', 'rb') as fh:
+    c = tomllib.load(fh)
+ws = c.get('workspace', {})
+tabs = c.get('tabs', [])
+desc = ws.get('description', '')
+names = ', '.join(t.get('name', '?') for t in tabs)
+print(f'{len(tabs)} tab(s) : {names}')
+if desc: print(f'  {desc}')
+" 2>/dev/null)
+                    echo "  ● $name  $desc"
+                else
+                    lines=$(grep -cv '^#\|^$' "$f" 2>/dev/null || echo 0)
+                    echo "  ○ $name  (ancien format, $lines tab(s) — sand workspace migrate)"
+                fi
+            done
+            ;;
+        show)
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace show <nom>}"
+            ws_file="$WORKSPACES_DIR/${ws_name}.toml"
+            if [[ ! -f "$ws_file" ]]; then
+                echo "Workspace inconnu : $ws_name" >&2
+                exit 1
+            fi
+            echo "── Workspace : $ws_name ──"
+            python3 "$HELPER" validate "$ws_file"
+            echo ""
+            cat "$ws_file"
+            ;;
+        edit)
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace edit <nom>}"
+            ws_file="$WORKSPACES_DIR/${ws_name}.toml"
+            if [[ ! -f "$ws_file" ]]; then
+                echo "Workspace inconnu : $ws_name" >&2
+                exit 1
+            fi
+            "${EDITOR:-vi}" "$ws_file"
+            python3 "$HELPER" validate "$ws_file"
+            ;;
+        delete|rm)
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace delete <nom>}"
+            ws_file="$WORKSPACES_DIR/${ws_name}.toml"
+            if [[ ! -f "$ws_file" ]]; then
+                echo "Workspace inconnu : $ws_name" >&2
+                exit 1
+            fi
+            echo -n "Supprimer le workspace '$ws_name' ? [o/N] "
+            read -r confirm
+            if [[ "$confirm" =~ ^[oOyY] ]]; then
+                rm "$ws_file"
+                echo "Workspace '$ws_name' supprimé."
+            else
+                echo "Annulé."
+            fi
+            ;;
+        migrate)
+            migrated=0
+            for f in "$WORKSPACES_DIR"/*; do
+                [[ -f "$f" ]] || continue
+                [[ "$f" == *.toml || "$f" == *.bak ]] && continue
+                name=$(basename "$f")
+                toml_file="$WORKSPACES_DIR/${name}.toml"
+                if [[ -f "$toml_file" ]]; then
+                    echo "  ⏭ $name — .toml existe déjà"
+                    continue
+                fi
+                python3 "$HELPER" migrate "$f" > "$toml_file"
+                mv "$f" "${f}.bak"
+                echo "  ✓ $name → ${name}.toml (ancien sauvegardé en .bak)"
+                migrated=$((migrated + 1))
+            done
+            if [[ "$migrated" -eq 0 ]]; then
+                echo "Rien à migrer."
+            else
+                echo "$migrated workspace(s) migré(s)."
+            fi
+            ;;
+        catalog)
+            python3 "$HELPER" catalog
+            ;;
+        "")
+            echo "sand workspace — gestion des workspaces"
+            echo ""
+            echo "  new                 Créer un workspace (wizard interactif)"
+            echo "  list                Lister les workspaces"
+            echo "  show <nom>          Afficher un workspace"
+            echo "  edit <nom>          Éditer un workspace dans \$EDITOR"
+            echo "  delete <nom>        Supprimer un workspace"
+            echo "  migrate             Migrer les anciens fichiers texte → TOML"
+            echo "  catalog             Catalogue d'apps TUI disponibles"
+            ;;
+        *)
+            echo "Sous-commande inconnue : $WS_SUBCOMMAND" >&2
+            echo "Utiliser : sand workspace [new|list|show|edit|delete|migrate|catalog]" >&2
+            exit 1
+            ;;
+    esac
+    exit 0
+fi
+
 # Pane tips pour les layouts dynamiques
 TIPS_PANE=""
 if [[ "$TIPS" == true ]]; then
@@ -103,47 +236,25 @@ if [[ "$TIPS" == true ]]; then
                 }'
 fi
 
-# --- Workspace nommé → générer le layout multi-tab ---
+# --- Workspace nommé → générer le layout depuis TOML ---
 if [[ -n "$WORKSPACE" ]]; then
-    WORKSPACE_FILE="${WORKSPACES_DIR}/${WORKSPACE}"
+    TOML_FILE="${WORKSPACES_DIR}/${WORKSPACE}.toml"
+    OLD_FILE="${WORKSPACES_DIR}/${WORKSPACE}"
 
-    TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX)"
-    trap 'rm -f "$TMPFILE"' EXIT
+    # Migration automatique si ancien format détecté
+    if [[ ! -f "$TOML_FILE" && -f "$OLD_FILE" ]]; then
+        echo "Migration du workspace $WORKSPACE vers TOML..."
+        python3 "$HELPER" migrate "$OLD_FILE" > "$TOML_FILE"
+        mv "$OLD_FILE" "${OLD_FILE}.bak"
+        echo "  ✓ Migré vers ${WORKSPACE}.toml (ancien sauvegardé en .bak)"
+    fi
 
-    echo "layout {" > "$TMPFILE"
-    TAB_COUNT=0
-    while IFS=' ' read -r name dir; do
-        [[ -z "$name" || "$name" =~ ^# ]] && continue
-        dir="${dir/#\~/$HOME}"
-        dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
-        echo "  + $name ($dir)"
-        cat >> "$TMPFILE" <<TABEOF
-    tab name="$name" cwd="$dir" {
-        pane size=1 borderless=true {
-            plugin location="zellij:compact-bar"
-        }
-        pane split_direction="vertical" {
-            pane split_direction="horizontal" size="60%" {
-                pane size="70%" cwd="$dir"
-                pane split_direction="vertical" size="30%" {
-                    pane cwd="$dir"
-                    pane cwd="$dir"
-                }
-            }
-            pane split_direction="horizontal" size="40%" {
-                pane command="lazygit" cwd="$dir"
-                pane command="yazi" cwd="$dir" {
-                    args "$dir"
-                }${TIPS_PANE}
-            }
-        }
-    }
-TABEOF
-        TAB_COUNT=$((TAB_COUNT + 1))
-    done < "$WORKSPACE_FILE"
-    echo "}" >> "$TMPFILE"
-
-    [[ "$TAB_COUNT" -eq 0 ]] && { echo "Workspace $WORKSPACE vide ou invalide." >&2; exit 1; }
+    if [[ ! -f "$TOML_FILE" ]]; then
+        echo "Workspace introuvable : $WORKSPACE" >&2
+        echo "Workspaces disponibles :"
+        ls -1 "$WORKSPACES_DIR"/*.toml 2>/dev/null | xargs -I{} basename {} .toml | sed 's/^/  /'
+        exit 1
+    fi
 
     # Réattacher si la session existe déjà
     if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${WORKSPACE} "; then
@@ -151,7 +262,16 @@ TABEOF
         exec zellij attach "$WORKSPACE"
     fi
 
-    echo "Lancement du workspace $WORKSPACE ($TAB_COUNT tabs)..."
+    # Générer le layout KDL via le helper Python
+    TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.kdl)"
+    trap 'rm -f "$TMPFILE"' EXIT
+
+    if ! python3 "$HELPER" render "$TOML_FILE" > "$TMPFILE"; then
+        echo "Erreur lors de la génération du layout pour $WORKSPACE" >&2
+        exit 1
+    fi
+
+    echo "Lancement du workspace $WORKSPACE..."
     exec zellij --session "$WORKSPACE" --new-session-with-layout "$TMPFILE"
 fi
 
