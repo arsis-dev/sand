@@ -28,22 +28,34 @@ Inspired by [Daniel Avila](https://x.com/dani_avila7)'s **SAND** mnemonic (**S**
 ## Prerequisites
 
 - **Zellij** or **tmux** (at least one)
-- **Python 3.11+** (for workspace helper and sand-synth)
-- **numpy** (`pip install numpy`)
+- **Python 3.11+** (for workspace helper)
 - **lazygit** and **yazi** (for default layout panels)
 - **fzf** (optional, enhances selection UIs)
 - **terminal-notifier** (optional, for macOS notifications)
 
-Install everything on macOS:
+If installing via Homebrew, Zellij and terminal-notifier are installed automatically. For manual install:
 
 ```bash
 brew install zellij lazygit yazi fzf terminal-notifier
-pip install numpy
 ```
 
 ## Getting Started
 
-### 1. Clone and Install
+### Option A: Homebrew (recommended)
+
+```bash
+brew install arsis-dev/tap/sand
+```
+
+This installs sand with Zellij and terminal-notifier as recommended dependencies.
+
+### Option B: Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arsis-dev/sand/main/install.sh | bash
+```
+
+### Option C: From source
 
 ```bash
 git clone https://github.com/arsis-dev/sand.git
@@ -51,9 +63,9 @@ cd sand
 ./install.sh
 ```
 
-This creates a symlink at `~/.local/bin/sand`. Make sure `~/.local/bin` is in your `PATH`.
+All options install to `~/.local/bin/`. Make sure it's in your `PATH`.
 
-### 2. Launch a Session
+### Launch a Session
 
 ```bash
 # In any project directory
