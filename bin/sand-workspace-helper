@@ -1,0 +1,555 @@
+#!/usr/bin/env python3
+"""sand-workspace-helper — Parsing TOML et génération KDL pour les workspaces sand.
+
+Appelé par bin/sand pour :
+- render  : convertir un .toml en layout KDL Zellij
+- validate: vérifier la syntaxe et les chemins d'un .toml
+- migrate : convertir un ancien fichier texte en TOML
+- catalog : lister les apps TUI disponibles
+- wizard  : générer un TOML interactivement (appelé par sand workspace new)
+"""
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+# ─── Catalogue d'apps TUI ───────────────────────────────────────────
+
+APPS_CATALOG = {
+    "lazygit":     {"cmd": "lazygit",             "args": "",        "cat": "git",            "brew": "lazygit"},
+    "gitui":       {"cmd": "gitui",               "args": "",        "cat": "git",            "brew": "gitui"},
+    "yazi":        {"cmd": "yazi",                 "args": ".",       "cat": "fichiers",       "brew": "yazi"},
+    "broot":       {"cmd": "broot",                "args": "",        "cat": "fichiers",       "brew": "broot"},
+    "btop":        {"cmd": "btop",                 "args": "",        "cat": "monitoring",     "brew": "btop"},
+    "htop":        {"cmd": "htop",                 "args": "",        "cat": "monitoring",     "brew": "htop"},
+    "bottom":      {"cmd": "btm",                  "args": "",        "cat": "monitoring",     "brew": "bottom"},
+    "lazydocker":  {"cmd": "lazydocker",           "args": "",        "cat": "docker",         "brew": "lazydocker"},
+    "k9s":         {"cmd": "k9s",                  "args": "",        "cat": "kubernetes",     "brew": "k9s"},
+    "serpl":       {"cmd": "serpl",                "args": "",        "cat": "search/replace", "brew": "serpl"},
+    "bacon":       {"cmd": "bacon",                "args": "",        "cat": "watch (rust)",   "brew": "bacon"},
+    "watchexec":   {"cmd": "watchexec",            "args": "-- make", "cat": "watch",          "brew": "watchexec"},
+    "lnav":        {"cmd": "lnav",                 "args": "",        "cat": "logs",           "brew": "lnav"},
+    "posting":     {"cmd": "posting",              "args": "",        "cat": "http",           "brew": ""},
+    "pgcli":       {"cmd": "pgcli",                "args": "",        "cat": "database",       "brew": "pgcli"},
+    "lazysql":     {"cmd": "lazysql",              "args": "",        "cat": "database",       "brew": ""},
+    "shell":       {"cmd": "",                     "args": "",        "cat": "terminal",       "brew": ""},
+}
+
+# ─── Layout presets ──────────────────────────────────────────────────
+
+DEFAULT_PANELS = [
+    {"app": "lazygit"},
+    {"app": "yazi"},
+]
+
+
+def _resolve_dir(dir_path, root=None):
+    """Résout un chemin de répertoire (expansion ~ et relatif à root)."""
+    d = dir_path.replace("~", str(Path.home()))
+    if root and not os.path.isabs(d):
+        root_expanded = root.replace("~", str(Path.home()))
+        d = os.path.join(root_expanded, d)
+    return os.path.normpath(d)
+
+
+def _panel_to_kdl(panel, cwd, indent=4):
+    """Convertit un panel en bloc KDL pane."""
+    app = panel.get("app", "")
+    command = panel.get("command", "")
+    pad = " " * indent
+    pad2 = " " * (indent + 4)
+
+    if command:
+        return f'{pad}pane command="bash" cwd="{cwd}" {{\n{pad2}args "-c" "{command}"\n{pad}}}'
+    elif app == "shell" or (not app and not command):
+        return f'{pad}pane cwd="{cwd}"'
+    elif app in APPS_CATALOG:
+        info = APPS_CATALOG[app]
+        cmd = info["cmd"]
+        args = info["args"]
+        if cmd and not shutil.which(cmd):
+            brew = info.get("brew", "")
+            msg = f"App non trouvée : {app}"
+            if brew:
+                msg += f" — brew install {brew}"
+            return f'{pad}pane command="bash" cwd="{cwd}" {{\n{pad2}args "-c" "echo \\"{msg}\\"; sleep infinity"\n{pad}}}'
+        if args:
+            if app == "yazi":
+                return f'{pad}pane command="{cmd}" cwd="{cwd}" {{\n{pad2}args "{cwd}"\n{pad}}}'
+            return f'{pad}pane command="{cmd}" cwd="{cwd}" {{\n{pad2}args "{args}"\n{pad}}}'
+        return f'{pad}pane command="{cmd}" cwd="{cwd}"'
+    else:
+        return f'{pad}pane command="{app}" cwd="{cwd}"'
+
+
+def _generate_tab_kdl(tab, root=None):
+    """Génère le KDL d'un tab complet."""
+    name = tab["name"]
+    cwd = _resolve_dir(tab["dir"], root)
+    layout = tab.get("layout", "default")
+    panels = tab.get("panels", DEFAULT_PANELS)
+
+    lines = [f'    tab name="{name}" cwd="{cwd}" {{']
+    lines.append('        pane size=1 borderless=true {')
+    lines.append('            plugin location="zellij:compact-bar"')
+    lines.append('        }')
+
+    if layout == "solo":
+        # Terminal seul
+        lines.append(f'        pane cwd="{cwd}"')
+
+    elif layout == "wide":
+        # Terminal en haut (70%), panels en bas (30%)
+        lines.append('        pane split_direction="horizontal" {')
+        lines.append(f'            pane size="70%" cwd="{cwd}"')
+        if panels:
+            lines.append('            pane split_direction="vertical" size="30%" {')
+            for p in panels:
+                lines.append(_panel_to_kdl(p, cwd, indent=16))
+            lines.append('            }')
+        lines.append('        }')
+
+    elif layout == "monitoring":
+        # Terminal à gauche (60%), stack de panels à droite (40%)
+        lines.append('        pane split_direction="vertical" {')
+        lines.append(f'            pane size="60%" cwd="{cwd}"')
+        if panels:
+            lines.append('            pane split_direction="horizontal" size="40%" {')
+            for p in panels:
+                lines.append(_panel_to_kdl(p, cwd, indent=16))
+            lines.append('            }')
+        lines.append('        }')
+
+    else:
+        # "default" — layout actuel : terminal principal (60%) + panels (40%)
+        lines.append('        pane split_direction="vertical" {')
+        lines.append('            pane split_direction="horizontal" size="60%" {')
+        lines.append(f'                pane size="70%" cwd="{cwd}"')
+        lines.append('                pane split_direction="vertical" size="30%" {')
+        lines.append(f'                    pane cwd="{cwd}"')
+        lines.append(f'                    pane cwd="{cwd}"')
+        lines.append('                }')
+        lines.append('            }')
+        if panels:
+            lines.append('            pane split_direction="horizontal" size="40%" {')
+            for p in panels:
+                lines.append(_panel_to_kdl(p, cwd, indent=16))
+            lines.append('            }')
+        lines.append('        }')
+
+    lines.append('    }')
+    return '\n'.join(lines)
+
+
+# ─── Commandes ───────────────────────────────────────────────────────
+
+def cmd_render(args):
+    """Convertit un fichier TOML workspace en layout KDL Zellij."""
+    toml_path = Path(args.file)
+    if not toml_path.exists():
+        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(toml_path, 'rb') as f:
+        config = tomllib.load(f)
+
+    workspace = config.get("workspace", {})
+    root = workspace.get("root", None)
+    tabs = config.get("tabs", [])
+
+    if not tabs:
+        print("Aucun tab défini dans le workspace", file=sys.stderr)
+        sys.exit(1)
+
+    kdl_lines = ["layout {"]
+    for tab in tabs:
+        kdl_lines.append(_generate_tab_kdl(tab, root))
+    kdl_lines.append("}")
+
+    print('\n'.join(kdl_lines))
+
+
+def cmd_validate(args):
+    """Vérifie la syntaxe et les chemins d'un workspace TOML."""
+    toml_path = Path(args.file)
+    if not toml_path.exists():
+        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(toml_path, 'rb') as f:
+            config = tomllib.load(f)
+    except tomllib.TOMLDecodeError as e:
+        print(f"Erreur TOML : {e}", file=sys.stderr)
+        sys.exit(1)
+
+    workspace = config.get("workspace", {})
+    root = workspace.get("root", None)
+    tabs = config.get("tabs", [])
+    errors = []
+    warnings = []
+
+    if not tabs:
+        errors.append("Aucun tab défini")
+
+    for i, tab in enumerate(tabs):
+        if "name" not in tab:
+            errors.append(f"Tab {i+1} : champ 'name' manquant")
+        if "dir" not in tab:
+            errors.append(f"Tab {i+1} : champ 'dir' manquant")
+        else:
+            d = _resolve_dir(tab["dir"], root)
+            if not os.path.isdir(d):
+                warnings.append(f"Tab '{tab.get('name', i+1)}' : répertoire introuvable → {d}")
+
+        layout = tab.get("layout", "default")
+        if layout not in ("default", "wide", "solo", "monitoring"):
+            errors.append(f"Tab '{tab.get('name', i+1)}' : layout inconnu '{layout}'")
+
+        for j, panel in enumerate(tab.get("panels", [])):
+            app = panel.get("app", "")
+            cmd = panel.get("command", "")
+            if app and app not in APPS_CATALOG and not cmd:
+                warnings.append(f"Tab '{tab.get('name', i+1)}' panel {j+1} : app '{app}' absente du catalogue")
+
+    if errors:
+        for e in errors:
+            print(f"ERREUR : {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if warnings:
+        for w in warnings:
+            print(f"ATTENTION : {w}", file=sys.stderr)
+
+    print(f"Workspace valide : {len(tabs)} tab(s)")
+
+
+def cmd_migrate(args):
+    """Convertit un ancien fichier workspace (texte plat) en TOML."""
+    old_path = Path(args.file)
+    if not old_path.exists():
+        print(f"Fichier introuvable : {old_path}", file=sys.stderr)
+        sys.exit(1)
+
+    name = old_path.stem
+    tabs = []
+
+    with open(old_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                tabs.append({"name": parts[0], "dir": parts[1]})
+
+    if not tabs:
+        print("Fichier vide ou invalide", file=sys.stderr)
+        sys.exit(1)
+
+    # Détecter un root commun
+    dirs_expanded = [_resolve_dir(t["dir"]) for t in tabs]
+    common = os.path.commonpath(dirs_expanded) if len(dirs_expanded) > 1 else ""
+    use_root = common and common != str(Path.home()) and len(common) > len(str(Path.home()))
+
+    # Générer le TOML
+    lines = ['[workspace]']
+    lines.append(f'name = "{name}"')
+    if use_root:
+        root_display = common.replace(str(Path.home()), "~")
+        lines.append(f'root = "{root_display}"')
+    lines.append('')
+
+    for tab in tabs:
+        lines.append('[[tabs]]')
+        lines.append(f'name = "{tab["name"]}"')
+        if use_root:
+            d = _resolve_dir(tab["dir"])
+            rel = os.path.relpath(d, common)
+            lines.append(f'dir = "{rel}"')
+        else:
+            lines.append(f'dir = "{tab["dir"]}"')
+        lines.append('')
+
+    print('\n'.join(lines))
+
+
+def cmd_catalog(args):
+    """Liste les apps TUI du catalogue avec statut d'installation."""
+    fmt = args.format if hasattr(args, 'format') else 'text'
+
+    for name, info in sorted(APPS_CATALOG.items()):
+        cmd = info["cmd"]
+        cat = info["cat"]
+        brew = info.get("brew", "")
+        installed = "oui" if (not cmd or shutil.which(cmd)) else "non"
+
+        if fmt == 'fzf':
+            # Format pour fzf multi-select
+            marker = "*" if installed == "oui" else " "
+            print(f"{marker} {name:<15} ({cat})")
+        else:
+            brew_info = f"  brew install {brew}" if brew else ""
+            print(f"  {name:<15} {cat:<18} {'✓' if installed == 'oui' else '✗'}{brew_info}")
+
+
+def cmd_wizard(args):
+    """Génère un workspace TOML interactivement."""
+    has_fzf = shutil.which("fzf") is not None
+
+    def ask(prompt, default=""):
+        """Demande une saisie avec valeur par défaut."""
+        suffix = f" [{default}]" if default else ""
+        try:
+            val = input(f"{prompt}{suffix}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(0)
+        return val or default
+
+    def ask_choice(prompt, choices, default=0):
+        """Sélection parmi des choix (fzf ou numérique)."""
+        if has_fzf:
+            choice_str = '\n'.join(choices)
+            try:
+                result = subprocess.run(
+                    ['fzf', '--prompt', f'{prompt} > ', '--height=10', '--reverse'],
+                    input=choice_str, capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    return result.stdout.strip()
+            except Exception:
+                pass
+
+        # Fallback numérique
+        print(f"\n{prompt} :")
+        for i, c in enumerate(choices):
+            marker = "→" if i == default else " "
+            print(f"  {marker} {i+1}) {c}")
+        try:
+            num = input(f"Choix [1-{len(choices)}, défaut {default+1}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(0)
+        if not num:
+            return choices[default]
+        try:
+            return choices[int(num) - 1]
+        except (ValueError, IndexError):
+            return choices[default]
+
+    def ask_apps():
+        """Sélection des apps de panel."""
+        # Filtrer les apps installées
+        available = []
+        for name, info in sorted(APPS_CATALOG.items()):
+            cmd = info["cmd"]
+            if not cmd or shutil.which(cmd):
+                available.append(name)
+
+        if has_fzf:
+            items = '\n'.join(f"{n:<15} ({APPS_CATALOG[n]['cat']})" for n in available)
+            try:
+                result = subprocess.run(
+                    ['fzf', '--multi', '--prompt', 'Apps > ',
+                     '--header', 'Tab/Shift+Tab pour sélectionner, Entrée pour valider',
+                     '--height=15', '--reverse'],
+                    input=items, capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    selected = []
+                    for line in result.stdout.strip().split('\n'):
+                        name = line.split()[0].strip()
+                        if name in APPS_CATALOG:
+                            selected.append(name)
+                    return selected
+            except Exception:
+                pass
+
+        # Fallback numérique
+        print("\nApps disponibles :")
+        for i, name in enumerate(available):
+            cat = APPS_CATALOG[name]["cat"]
+            print(f"  {i+1}) {name} ({cat})")
+        try:
+            nums = input("Numéros (ex: 1 3 5, défaut: lazygit yazi): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit(0)
+        if not nums:
+            return ["lazygit", "yazi"]
+        selected = []
+        for n in nums.split():
+            try:
+                idx = int(n) - 1
+                if 0 <= idx < len(available):
+                    selected.append(available[idx])
+            except ValueError:
+                pass
+        return selected or ["lazygit", "yazi"]
+
+    # ── Étape 1 : Nom ──
+    print("╔══════════════════════════════════════╗")
+    print("║   sand workspace new — assistant     ║")
+    print("╚══════════════════════════════════════╝")
+    print()
+
+    name = ask("Nom du workspace")
+    if not name:
+        print("Nom requis.", file=sys.stderr)
+        sys.exit(1)
+
+    # ── Étape 2 : Description ──
+    description = ask("Description (optionnel, Entrée pour skip)")
+
+    # ── Étape 3 : Répertoire racine ──
+    root = ask("Répertoire racine (optionnel)")
+    if root:
+        root = root.replace("~", str(Path.home()))
+        if not os.path.isdir(root):
+            print(f"ATTENTION : répertoire introuvable → {root}", file=sys.stderr)
+
+    # ── Étape 4 : Tabs ──
+    tabs = []
+    print("\n── Tabs ──")
+    while True:
+        tab_num = len(tabs) + 1
+        print(f"\nTab {tab_num} :")
+        tab_name = ask("  Nom du tab")
+        if not tab_name:
+            if tabs:
+                break
+            print("Au moins un tab requis.")
+            continue
+
+        tab_dir = ask("  Répertoire")
+        if not tab_dir:
+            tab_dir = tab_name
+
+        layout = ask_choice("  Layout", ["default", "wide", "solo", "monitoring"])
+
+        print(f"\n  Panels pour '{tab_name}' :")
+        apps = ask_apps()
+
+        tab = {"name": tab_name, "dir": tab_dir, "layout": layout, "panels": apps}
+        tabs.append(tab)
+
+        try:
+            more = input("\nAjouter un autre tab ? [o/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if more not in ('o', 'oui', 'y', 'yes'):
+            break
+
+    # ── Étape 5 : Génération du TOML ──
+    toml_lines = ['[workspace]']
+    toml_lines.append(f'name = "{name}"')
+    if description:
+        toml_lines.append(f'description = "{description}"')
+    if root:
+        root_display = root.replace(str(Path.home()), "~")
+        toml_lines.append(f'root = "{root_display}"')
+    toml_lines.append('')
+
+    for tab in tabs:
+        toml_lines.append('[[tabs]]')
+        toml_lines.append(f'name = "{tab["name"]}"')
+        toml_lines.append(f'dir = "{tab["dir"]}"')
+        if tab["layout"] != "default":
+            toml_lines.append(f'layout = "{tab["layout"]}"')
+        toml_lines.append('')
+        for app in tab["panels"]:
+            toml_lines.append('[[tabs.panels]]')
+            toml_lines.append(f'app = "{app}"')
+            toml_lines.append('')
+
+    toml_content = '\n'.join(toml_lines)
+
+    # ── Étape 6 : Résumé et confirmation ──
+    print("\n── Résumé ──")
+    print(toml_content)
+
+    try:
+        confirm = input("Écrire ce workspace ? [O/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nAnnulé.")
+        sys.exit(0)
+
+    if confirm in ('n', 'non', 'no'):
+        print("Annulé.")
+        sys.exit(0)
+
+    # Écriture
+    output_dir = args.output_dir if hasattr(args, 'output_dir') and args.output_dir else str(Path.home() / '.config' / 'sand' / 'workspaces')
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{name}.toml")
+
+    if os.path.exists(output_path):
+        try:
+            overwrite = input(f"Le fichier {output_path} existe déjà. Écraser ? [o/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAnnulé.")
+            sys.exit(0)
+        if overwrite not in ('o', 'oui', 'y', 'yes'):
+            print("Annulé.")
+            sys.exit(0)
+
+    with open(output_path, 'w') as f:
+        f.write(toml_content)
+
+    print(f"\n✓ Workspace créé : {output_path}")
+    print(f"  Lancer avec : sand {name}")
+
+
+# ─── Main ────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='sand-workspace-helper',
+        description='Parsing TOML et génération KDL pour les workspaces sand',
+    )
+    sub = parser.add_subparsers(dest='command')
+
+    # render
+    render = sub.add_parser('render', help='Convertit un .toml en layout KDL')
+    render.add_argument('file', help='Fichier workspace .toml')
+
+    # validate
+    validate = sub.add_parser('validate', help='Vérifie un workspace .toml')
+    validate.add_argument('file', help='Fichier workspace .toml')
+
+    # migrate
+    migrate = sub.add_parser('migrate', help='Convertit un ancien workspace en TOML')
+    migrate.add_argument('file', help='Ancien fichier workspace (texte plat)')
+
+    # catalog
+    catalog = sub.add_parser('catalog', help='Liste les apps TUI')
+    catalog.add_argument('--format', choices=['text', 'fzf'], default='text')
+
+    # wizard
+    wizard = sub.add_parser('wizard', help='Crée un workspace interactivement')
+    wizard.add_argument('--output-dir', help='Répertoire de sortie')
+
+    args = parser.parse_args()
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(0)
+
+    commands = {
+        'render': cmd_render,
+        'validate': cmd_validate,
+        'migrate': cmd_migrate,
+        'catalog': cmd_catalog,
+        'wizard': cmd_wizard,
+    }
+    commands[args.command](args)
+
+
+if __name__ == '__main__':
+    main()
