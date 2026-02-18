@@ -263,7 +263,7 @@ if [[ -n "$WORKSPACE" ]]; then
             exec tmux attach-session -t "$WORKSPACE"
         fi
 
-        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.sh)"
+        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX)"
         trap 'rm -f "$TMPFILE"' EXIT
 
         if ! python3 "$HELPER" render-tmux "$TOML_FILE" --session "$WORKSPACE" > "$TMPFILE"; then
@@ -280,7 +280,7 @@ if [[ -n "$WORKSPACE" ]]; then
             exec zellij attach "$WORKSPACE"
         fi
 
-        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.kdl)"
+        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX)"
         trap 'rm -f "$TMPFILE"' EXIT
 
         if ! python3 "$HELPER" render "$TOML_FILE" > "$TMPFILE"; then

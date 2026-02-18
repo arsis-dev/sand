@@ -590,8 +590,11 @@ def cmd_wizard(args):
 
         layout = ask_choice("  Layout", ["default", "wide", "solo", "monitoring"])
 
-        print(f"\n  Panels for '{tab_name}':")
-        apps = ask_apps()
+        if layout == "solo":
+            apps = []
+        else:
+            print(f"\n  Panels for '{tab_name}':")
+            apps = ask_apps()
 
         tab = {"name": tab_name, "dir": tab_dir, "layout": layout, "panels": apps}
         tabs.append(tab)
