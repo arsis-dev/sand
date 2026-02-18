@@ -11,6 +11,8 @@
 #   sand --list / -l         Lister les sessions actives
 #   sand --kill / -k         Fermer une session (sélecteur fzf)
 #   sand --kill-all / -K     Fermer toutes les sessions
+#   sand --keys              Aide-mémoire des raccourcis Zellij
+#   sand --tips              Lancer avec un pane aide-mémoire
 #   sand --open dir1 dir2    Lancer plusieurs projets dans des tabs Zellij
 #
 # Backends :
@@ -30,6 +32,7 @@ BACKEND="zellij"
 PROJECT_DIR=""
 WORKSPACE=""
 OPEN_DIRS=()
+TIPS=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -40,9 +43,11 @@ for arg in "$@"; do
         --kill|-k)        ACTION="kill" ;;
         --kill-all|-K)    ACTION="kill-all" ;;
         --open)           ACTION="open" ;;
+        --keys)           ACTION="keys" ;;
+        --tips)           TIPS=true ;;
         --tmux)           BACKEND="tmux" ;;
         --ghostty)        BACKEND="ghostty" ;;
-        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
+        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--keys|--tips|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
         *)
             if [[ "$ACTION" == "open" ]]; then
                 OPEN_DIRS+=("$arg")
@@ -55,6 +60,48 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# --- Aide-mémoire raccourcis Zellij ---
+show_keys() {
+    cat <<'KEYS'
+
+  SAND — Raccourcis Zellij
+  ────────────────────────
+
+  Navigation
+    Alt + ←/→/↑/↓      Changer de pane
+    Alt + 1..9          Aller au tab N
+
+  Panes  (Ctrl+P puis…)
+    R  Split droite     D  Split bas
+    X  Fermer           F  Plein écran
+    W  Flottant
+
+  Tabs  (Ctrl+T puis…)
+    N  Nouveau          X  Fermer
+    R  Renommer
+
+  Resize  (Ctrl+N puis flèches)
+
+  Session  (Ctrl+O puis…)
+    D  Détacher         W  Session manager
+
+KEYS
+}
+
+if [[ "$ACTION" == "keys" ]]; then
+    show_keys
+    exit 0
+fi
+
+# Pane tips pour les layouts dynamiques
+TIPS_PANE=""
+if [[ "$TIPS" == true ]]; then
+    TIPS_PANE='
+                pane command="bash" size="20%" {
+                    args "-c" "sand --keys && sleep infinity"
+                }'
+fi
 
 # --- Workspace nommé → générer le layout multi-tab ---
 if [[ -n "$WORKSPACE" ]]; then
@@ -87,7 +134,7 @@ if [[ -n "$WORKSPACE" ]]; then
                 pane command="lazygit" cwd="$dir"
                 pane command="yazi" cwd="$dir" {
                     args "$dir"
-                }
+                }${TIPS_PANE}
             }
         }
     }
@@ -386,7 +433,7 @@ end tell"
                 pane command="lazygit" cwd="$dir"
                 pane command="yazi" cwd="$dir" {
                     args "$dir"
-                }
+                }${TIPS_PANE}
             }
         }
     }
@@ -440,6 +487,34 @@ fi
 # Choisir le layout
 if [[ "$LAYOUT" == "solo" ]]; then
     LAYOUT_FILE="${LAYOUT_DIR}/sand-solo.kdl"
+elif [[ "$TIPS" == true ]]; then
+    LAYOUT_FILE="$(mktemp /tmp/sand-tips-XXXXXX)"
+    trap 'rm -f "$LAYOUT_FILE"' EXIT
+    cat > "$LAYOUT_FILE" <<TIPSEOF
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:compact-bar"
+    }
+    pane split_direction="vertical" {
+        pane split_direction="horizontal" size="60%" {
+            pane size="70%"
+            pane split_direction="vertical" size="30%" {
+                pane
+                pane
+            }
+        }
+        pane split_direction="horizontal" size="40%" {
+            pane command="lazygit"
+            pane command="yazi" {
+                args "."
+            }
+            pane command="bash" size="20%" {
+                args "-c" "sand --keys && sleep infinity"
+            }
+        }
+    }
+}
+TIPSEOF
 else
     LAYOUT_FILE="${LAYOUT_DIR}/sand.kdl"
 fi
