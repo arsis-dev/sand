@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""sand-synth — Générateur de sons pour sand-notify.
+"""sand-synth — Sound generator for sand-notify.
 
 Usage:
-    sand-synth presets                         Liste les presets disponibles
-    sand-synth generate <preset> [output.aiff] Génère un son depuis un preset
-    sand-synth play <preset>                   Génère + joue avec afplay
-    sand-synth pack <nom>                      Génère un pack complet
+    sand-synth presets                         List available presets
+    sand-synth generate <preset> [output.aiff] Generate a sound from a preset
+    sand-synth play <preset>                   Generate + play with afplay
+    sand-synth pack <name>                     Generate a full sound pack
 """
 
 import argparse
@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Ajouter le répertoire synth/ au path
+# Add synth/ directory to path
 SCRIPT_DIR = Path(os.path.realpath(__file__)).parent
 SYNTH_DIR = SCRIPT_DIR.parent / 'synth'
 sys.path.insert(0, str(SYNTH_DIR.parent))
@@ -26,7 +26,7 @@ SOUNDS_DIR = Path.home() / '.config' / 'sand' / 'sounds'
 
 
 def cmd_presets(args):
-    """Liste les presets disponibles."""
+    """List available presets."""
     presets = load_presets()
     for name, preset in sorted(presets.items()):
         ptype = preset['type']
@@ -41,28 +41,28 @@ def cmd_presets(args):
 
 
 def cmd_generate(args):
-    """Génère un fichier AIFF depuis un preset."""
+    """Generate an AIFF file from a preset."""
     presets = load_presets()
     name = args.preset
 
     if name not in presets:
-        print(f"Preset inconnu : {name}", file=sys.stderr)
-        print(f"Presets disponibles : {', '.join(sorted(presets))}", file=sys.stderr)
+        print(f"Unknown preset: {name}", file=sys.stderr)
+        print(f"Available presets: {', '.join(sorted(presets))}", file=sys.stderr)
         sys.exit(1)
 
     output = args.output or f"{name}.aiff"
     signal = render_preset(name, presets[name])
     write_aiff(output, signal)
-    print(f"Généré : {output}")
+    print(f"Generated: {output}")
 
 
 def cmd_play(args):
-    """Génère un son temporaire et le joue avec afplay."""
+    """Generate a temporary sound and play it with afplay."""
     presets = load_presets()
     name = args.preset
 
     if name not in presets:
-        print(f"Preset inconnu : {name}", file=sys.stderr)
+        print(f"Unknown preset: {name}", file=sys.stderr)
         sys.exit(1)
 
     signal = render_preset(name, presets[name])
@@ -70,30 +70,30 @@ def cmd_play(args):
         tmpfile = f.name
     try:
         write_aiff(tmpfile, signal)
-        print(f"Lecture : {name}")
+        print(f"Playing: {name}")
         subprocess.run(['afplay', tmpfile], check=True)
     finally:
         os.unlink(tmpfile)
 
 
 def cmd_pack(args):
-    """Génère un pack complet de sons."""
+    """Generate a full sound pack."""
     presets = load_presets()
     pack_name = args.name
     pack_dir = SOUNDS_DIR / pack_name
 
-    # Trouver les presets correspondants
+    # Find matching presets
     stop_presets = {k: v for k, v in presets.items() if k.startswith(f"{pack_name}-stop")}
     question_presets = {k: v for k, v in presets.items() if k.startswith(f"{pack_name}-question")}
 
     if not stop_presets and not question_presets:
-        # Fallback : chercher des presets avec le préfixe du pack
+        # Fallback: look for presets with the pack prefix
         matching = {k: v for k, v in presets.items() if k.startswith(pack_name)}
         if not matching:
-            print(f"Aucun preset trouvé pour le pack '{pack_name}'", file=sys.stderr)
-            print(f"Presets disponibles : {', '.join(sorted(presets))}", file=sys.stderr)
+            print(f"No presets found for pack '{pack_name}'", file=sys.stderr)
+            print(f"Available presets: {', '.join(sorted(presets))}", file=sys.stderr)
             sys.exit(1)
-        # Grouper par type détecté depuis le nom
+        # Group by detected type from name
         for name, preset in matching.items():
             suffix = name[len(pack_name)+1:] if len(name) > len(pack_name) else name
             if 'stop' in suffix:
@@ -101,7 +101,7 @@ def cmd_pack(args):
             elif 'question' in suffix:
                 question_presets[name] = preset
 
-    # Générer les sons stop
+    # Generate stop sounds
     stop_dir = pack_dir / 'stop'
     stop_dir.mkdir(parents=True, exist_ok=True)
     for i, (name, preset) in enumerate(sorted(stop_presets.items()), 1):
@@ -110,7 +110,7 @@ def cmd_pack(args):
         write_aiff(str(output), signal)
         print(f"  stop/{name}.aiff")
 
-    # Générer les sons question
+    # Generate question sounds
     question_dir = pack_dir / 'question'
     question_dir.mkdir(parents=True, exist_ok=True)
     for i, (name, preset) in enumerate(sorted(question_presets.items()), 1):
@@ -120,32 +120,32 @@ def cmd_pack(args):
         print(f"  question/{name}.aiff")
 
     total = len(stop_presets) + len(question_presets)
-    print(f"\nPack '{pack_name}' : {len(stop_presets)} stop, {len(question_presets)} question ({total} sons)")
-    print(f"Répertoire : {pack_dir}")
+    print(f"\nPack '{pack_name}': {len(stop_presets)} stop, {len(question_presets)} question ({total} sounds)")
+    print(f"Directory: {pack_dir}")
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog='sand-synth',
-        description='Générateur de sons pour sand-notify',
+        description='Sound generator for sand-notify',
     )
     sub = parser.add_subparsers(dest='command')
 
     # presets
-    sub.add_parser('presets', help='Liste les presets disponibles')
+    sub.add_parser('presets', help='List available presets')
 
     # generate
-    gen = sub.add_parser('generate', help='Génère un fichier AIFF')
-    gen.add_argument('preset', help='Nom du preset')
-    gen.add_argument('output', nargs='?', help='Fichier de sortie (défaut: <preset>.aiff)')
+    gen = sub.add_parser('generate', help='Generate an AIFF file')
+    gen.add_argument('preset', help='Preset name')
+    gen.add_argument('output', nargs='?', help='Output file (default: <preset>.aiff)')
 
     # play
-    play = sub.add_parser('play', help='Génère et joue un son')
-    play.add_argument('preset', help='Nom du preset')
+    play = sub.add_parser('play', help='Generate and play a sound')
+    play.add_argument('preset', help='Preset name')
 
     # pack
-    pack = sub.add_parser('pack', help='Génère un pack complet')
-    pack.add_argument('name', help='Nom du pack (ex: zen)')
+    pack = sub.add_parser('pack', help='Generate a full sound pack')
+    pack.add_argument('name', help='Pack name (e.g. zen)')
 
     args = parser.parse_args()
 

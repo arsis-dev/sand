@@ -1,14 +1,14 @@
 #!/bin/bash
-# sand-notify — gestion des packs de sons de notification Sand
+# sand-notify — notification sound pack management for Sand
 #
 # Usage:
-#   sand-notify use <pack>       Active un pack (prout, warcraft, serieux...)
-#   sand-notify current          Affiche le pack actif
-#   sand-notify packs            Liste les packs disponibles
-#   sand-notify play [pack]      Écoute tous les sons d'un pack
-#   sand-notify test [stop|question]  Test une notification
-#   sand-notify add <pack> <stop|question> <fichier>  Ajoute un son
-#   sand-notify notify <stop|question|tool>  Appelé par les hooks Claude Code
+#   sand-notify use <pack>       Activate a pack (prout, warcraft, serieux...)
+#   sand-notify current          Show the active pack
+#   sand-notify packs            List available packs
+#   sand-notify play [pack]      Listen to all sounds in a pack
+#   sand-notify test [stop|question]  Test a notification
+#   sand-notify add <pack> <stop|question> <file>  Add a sound
+#   sand-notify notify <stop|question|tool>  Called by Claude Code hooks
 
 SOUNDS_DIR="$HOME/.config/sand/sounds"
 SYSTEM_DIR="$HOME/Library/Sounds"
@@ -17,7 +17,7 @@ SENDER="dev.arsis.sand.notify"
 
 mkdir -p "$SOUNDS_DIR"
 
-# Lire le pack actif
+# Read the active pack
 get_current() {
     if [ -f "$CONFIG" ]; then
         cat "$CONFIG"
@@ -26,15 +26,15 @@ get_current() {
     fi
 }
 
-# Synchroniser un pack vers ~/Library/Sounds/
+# Sync a pack to ~/Library/Sounds/
 sync_pack() {
     local pack="$1"
     local pack_dir="$SOUNDS_DIR/$pack"
 
-    # Nettoyer tous les sons Sand
+    # Clean all Sand sounds
     rm -f "$SYSTEM_DIR"/Sand_*.aiff
 
-    # Sons "stop"
+    # Stop sounds
     local i=0
     for f in "$pack_dir"/stop/*.aiff; do
         [ -f "$f" ] || continue
@@ -42,7 +42,7 @@ sync_pack() {
         cp "$f" "$SYSTEM_DIR/Sand_${pack}_stop_${i}.aiff"
     done
 
-    # Sons "question"
+    # Question sounds
     local j=0
     for f in "$pack_dir"/question/*.aiff; do
         [ -f "$f" ] || continue
@@ -50,7 +50,7 @@ sync_pack() {
         cp "$f" "$SYSTEM_DIR/Sand_${pack}_question_${j}.aiff"
     done
 
-    # Sons "tool" (son subtil quand Claude veut utiliser un outil)
+    # Tool sounds (subtle sound when Claude wants to use a tool)
     local k=0
     for f in "$pack_dir"/tool/*.aiff; do
         [ -f "$f" ] || continue
@@ -58,22 +58,22 @@ sync_pack() {
         cp "$f" "$SYSTEM_DIR/Sand_${pack}_tool_${k}.aiff"
     done
 
-    # Fallback : copier Tink si aucun son tool dans le pack
+    # Fallback: copy Tink if no tool sound in the pack
     if [ "$k" -eq 0 ]; then
         cp /System/Library/Sounds/Tink.aiff "$SYSTEM_DIR/Sand_${pack}_tool_1.aiff"
         k=1
     fi
 
-    # Redémarrer NotificationCenter pour détecter les nouveaux sons
+    # Restart NotificationCenter to detect new sounds
     killall usernoted 2>/dev/null
     sleep 1
 
-    echo "$i son(s) stop, $j son(s) question, $k son(s) tool synchronisés"
+    echo "$i stop, $j question, $k tool sound(s) synced"
 }
 
-# Jouer un son aléatoire
+# Play a random sound
 play_random() {
-    local type="$1"  # stop, question ou tool
+    local type="$1"  # stop, question or tool
     local pack
     pack=$(get_current)
     local prefix="Sand_${pack}_${type}"
@@ -90,18 +90,18 @@ case "${1:-current}" in
     use)
         pack="${2:?Usage: sand-notify use <pack>}"
         if [ ! -d "$SOUNDS_DIR/$pack" ]; then
-            echo "❌ Pack inconnu : $pack"
-            echo "Packs disponibles :"
+            echo "Unknown pack: $pack"
+            echo "Available packs:"
             ls -1 "$SOUNDS_DIR" | grep -v '\.' | sed 's/^/  /'
             exit 1
         fi
         echo "$pack" > "$CONFIG"
         sync_pack "$pack"
-        echo "✅ Pack actif : $pack"
+        echo "Active pack: $pack"
         ;;
 
     current)
-        echo "Pack actif : $(get_current)"
+        echo "Active pack: $(get_current)"
         ;;
 
     packs)
@@ -124,10 +124,10 @@ case "${1:-current}" in
         pack="${2:-$(get_current)}"
         pack_dir="$SOUNDS_DIR/$pack"
         if [ ! -d "$pack_dir" ]; then
-            echo "❌ Pack inconnu : $pack"
+            echo "Unknown pack: $pack"
             exit 1
         fi
-        echo "🔊 Pack : $pack"
+        echo "Pack: $pack"
         echo "--- stop ---"
         for f in "$pack_dir"/stop/*.aiff; do
             [ -f "$f" ] || continue
@@ -160,7 +160,7 @@ case "${1:-current}" in
         sync_pack "$(get_current)" > /dev/null
         sound=$(play_random "$type")
         if [ -z "$sound" ]; then
-            echo "❌ Aucun son '$type' dans le pack $(get_current)"
+            echo "No '$type' sound in pack $(get_current)"
             exit 1
         fi
         if [ "$type" = "stop" ]; then
@@ -168,29 +168,29 @@ case "${1:-current}" in
         else
             terminal-notifier -title 'Sand ❓' -message "Test — $(get_current) — $type" -sound "$sound" -sender "$SENDER" 2>/dev/null
         fi
-        echo "🔊 $sound"
+        echo "$sound"
         ;;
 
     notify)
-        # Appelé par les hooks Claude Code
+        # Called by Claude Code hooks
         type="${2:-stop}"
         sound=$(play_random "$type")
         [ -z "$sound" ] && sound="default"
         project=$(basename "$PWD")
         if [ "$type" = "tool" ]; then
-            # Tool : juste le son, pas de bannière (trop fréquent)
+            # Tool: just the sound, no banner (too frequent)
             afplay "$SYSTEM_DIR/${sound}.aiff" &>/dev/null &
         elif [ "$type" = "stop" ]; then
-            terminal-notifier -title 'Sand ✅' -message "Claude a terminé dans $project" -sound "$sound" -sender "$SENDER" 2>/dev/null
+            terminal-notifier -title 'Sand ✅' -message "Claude finished in $project" -sound "$sound" -sender "$SENDER" 2>/dev/null
         else
-            terminal-notifier -title 'Sand ❓' -message "Claude a une question dans $project" -sound "$sound" -sender "$SENDER" 2>/dev/null
+            terminal-notifier -title 'Sand ❓' -message "Claude has a question in $project" -sound "$sound" -sender "$SENDER" 2>/dev/null
         fi
         ;;
 
     add)
-        pack="${2:?Usage: sand-notify add <pack> <stop|question> <fichier>}"
-        type="${3:?Usage: sand-notify add <pack> <stop|question> <fichier>}"
-        file="${4:?Usage: sand-notify add <pack> <stop|question> <fichier>}"
+        pack="${2:?Usage: sand-notify add <pack> <stop|question> <file>}"
+        type="${3:?Usage: sand-notify add <pack> <stop|question> <file>}"
+        file="${4:?Usage: sand-notify add <pack> <stop|question> <file>}"
         mkdir -p "$SOUNDS_DIR/$pack/$type"
         name=$(basename "${file%.*}")
         ext="${file##*.}"
@@ -199,20 +199,20 @@ case "${1:-current}" in
         else
             ffmpeg -y -i "$file" "$SOUNDS_DIR/$pack/$type/${name}.aiff" 2>/dev/null
         fi
-        echo "✅ Ajouté : $pack/$type/${name}.aiff"
-        # Re-sync si c'est le pack actif
+        echo "Added: $pack/$type/${name}.aiff"
+        # Re-sync if it's the active pack
         [ "$pack" = "$(get_current)" ] && sync_pack "$pack" > /dev/null
         ;;
 
     *)
-        echo "sand-notify — packs de sons de notification Sand"
+        echo "sand-notify — notification sound packs for Sand"
         echo ""
-        echo "  use <pack>                    Active un pack"
-        echo "  current                       Pack actif"
-        echo "  packs                         Liste les packs"
-        echo "  play [pack]                   Écoute un pack"
-        echo "  test [stop|question]          Test une notification"
-        echo "  add <pack> <type> <fichier>   Ajoute un son"
-        echo "  notify <stop|question>        (hooks Claude Code)"
+        echo "  use <pack>                    Activate a pack"
+        echo "  current                       Active pack"
+        echo "  packs                         List packs"
+        echo "  play [pack]                   Listen to a pack"
+        echo "  test [stop|question]          Test a notification"
+        echo "  add <pack> <type> <file>      Add a sound"
+        echo "  notify <stop|question>        (Claude Code hooks)"
         ;;
 esac

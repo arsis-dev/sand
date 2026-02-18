@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""sand-workspace-helper — Parsing TOML et génération KDL pour les workspaces sand.
+"""sand-workspace-helper — TOML parsing and KDL generation for sand workspaces.
 
-Appelé par bin/sand pour :
-- render  : convertir un .toml en layout KDL Zellij
-- validate: vérifier la syntaxe et les chemins d'un .toml
-- migrate : convertir un ancien fichier texte en TOML
-- catalog : lister les apps TUI disponibles
-- wizard  : générer un TOML interactivement (appelé par sand workspace new)
+Called by bin/sand for:
+- render  : convert a .toml to a Zellij KDL layout
+- validate: check .toml syntax and paths
+- migrate : convert an old plain text file to TOML
+- catalog : list available TUI apps
+- wizard  : generate a TOML interactively (called by sand workspace new)
 """
 
 import argparse
@@ -17,26 +17,26 @@ import sys
 import tomllib
 from pathlib import Path
 
-# ─── Catalogue d'apps TUI ───────────────────────────────────────────
+# ─── TUI apps catalog ─────────────────────────────────────────────
 
 APPS_CATALOG = {
-    "lazygit":     {"cmd": "lazygit",      "args": "",        "cat": "git",            "brew": "lazygit",     "desc": "Interface git interactive — staging, commits, branches, stash"},
-    "gitui":       {"cmd": "gitui",        "args": "",        "cat": "git",            "brew": "gitui",       "desc": "Client git TUI rapide écrit en Rust"},
-    "yazi":        {"cmd": "yazi",         "args": ".",       "cat": "fichiers",       "brew": "yazi",        "desc": "Gestionnaire de fichiers terminal rapide (Rust, async I/O)"},
-    "broot":       {"cmd": "broot",        "args": "",        "cat": "fichiers",       "brew": "broot",       "desc": "Explorateur d'arborescence avec recherche fuzzy"},
-    "btop":        {"cmd": "btop",         "args": "",        "cat": "monitoring",     "brew": "btop",        "desc": "Moniteur système — CPU, mémoire, disques, réseau, processus"},
-    "htop":        {"cmd": "htop",         "args": "",        "cat": "monitoring",     "brew": "htop",        "desc": "Moniteur de processus interactif (classique)"},
-    "bottom":      {"cmd": "btm",          "args": "",        "cat": "monitoring",     "brew": "bottom",      "desc": "Moniteur système graphique écrit en Rust"},
-    "lazydocker":  {"cmd": "lazydocker",   "args": "",        "cat": "docker",         "brew": "lazydocker",  "desc": "Dashboard Docker — conteneurs, images, volumes, logs"},
-    "k9s":         {"cmd": "k9s",          "args": "",        "cat": "kubernetes",     "brew": "k9s",         "desc": "Dashboard Kubernetes — pods, services, logs, exec"},
-    "serpl":       {"cmd": "serpl",        "args": "",        "cat": "search/replace", "brew": "serpl",       "desc": "Rechercher et remplacer interactif dans tout un projet"},
-    "bacon":       {"cmd": "bacon",        "args": "",        "cat": "watch (rust)",   "brew": "bacon",       "desc": "Watcher Rust — recompile et affiche erreurs/warnings en live"},
-    "watchexec":   {"cmd": "watchexec",    "args": "-- make", "cat": "watch",          "brew": "watchexec",   "desc": "Exécute une commande à chaque modification de fichier"},
-    "lnav":        {"cmd": "lnav",         "args": "",        "cat": "logs",           "brew": "lnav",        "desc": "Visualiseur de logs avancé avec filtrage et coloration"},
-    "posting":     {"cmd": "posting",      "args": "",        "cat": "http",           "brew": "",            "desc": "Client HTTP TUI — alternative à Postman dans le terminal",  "install": "pipx install posting"},
-    "pgcli":       {"cmd": "pgcli",        "args": "",        "cat": "database",       "brew": "pgcli",       "desc": "Client PostgreSQL avec autocomplétion et coloration SQL"},
-    "lazysql":     {"cmd": "lazysql",      "args": "",        "cat": "database",       "brew": "",            "desc": "Client SQL multi-bases (Postgres, MySQL, SQLite)",          "install": "go install github.com/jorgerojas26/lazysql@latest"},
-    "shell":       {"cmd": "",             "args": "",        "cat": "terminal",       "brew": "",            "desc": "Terminal vide — pour une session shell classique"},
+    "lazygit":     {"cmd": "lazygit",      "args": "",        "cat": "git",            "brew": "lazygit",     "desc": "Interactive git UI — staging, commits, branches, stash"},
+    "gitui":       {"cmd": "gitui",        "args": "",        "cat": "git",            "brew": "gitui",       "desc": "Fast git TUI written in Rust"},
+    "yazi":        {"cmd": "yazi",         "args": ".",       "cat": "files",          "brew": "yazi",        "desc": "Fast terminal file manager (Rust, async I/O)"},
+    "broot":       {"cmd": "broot",        "args": "",        "cat": "files",          "brew": "broot",       "desc": "Tree explorer with fuzzy search"},
+    "btop":        {"cmd": "btop",         "args": "",        "cat": "monitoring",     "brew": "btop",        "desc": "System monitor — CPU, memory, disks, network, processes"},
+    "htop":        {"cmd": "htop",         "args": "",        "cat": "monitoring",     "brew": "htop",        "desc": "Interactive process monitor (classic)"},
+    "bottom":      {"cmd": "btm",          "args": "",        "cat": "monitoring",     "brew": "bottom",      "desc": "Graphical system monitor written in Rust"},
+    "lazydocker":  {"cmd": "lazydocker",   "args": "",        "cat": "docker",         "brew": "lazydocker",  "desc": "Docker dashboard — containers, images, volumes, logs"},
+    "k9s":         {"cmd": "k9s",          "args": "",        "cat": "kubernetes",     "brew": "k9s",         "desc": "Kubernetes dashboard — pods, services, logs, exec"},
+    "serpl":       {"cmd": "serpl",        "args": "",        "cat": "search/replace", "brew": "serpl",       "desc": "Interactive search and replace across a project"},
+    "bacon":       {"cmd": "bacon",        "args": "",        "cat": "watch (rust)",   "brew": "bacon",       "desc": "Rust watcher — recompiles and shows errors/warnings live"},
+    "watchexec":   {"cmd": "watchexec",    "args": "-- make", "cat": "watch",          "brew": "watchexec",   "desc": "Run a command on every file change"},
+    "lnav":        {"cmd": "lnav",         "args": "",        "cat": "logs",           "brew": "lnav",        "desc": "Advanced log viewer with filtering and highlighting"},
+    "posting":     {"cmd": "posting",      "args": "",        "cat": "http",           "brew": "",            "desc": "HTTP TUI client — Postman alternative in the terminal",    "install": "pipx install posting"},
+    "pgcli":       {"cmd": "pgcli",        "args": "",        "cat": "database",       "brew": "pgcli",       "desc": "PostgreSQL client with autocompletion and SQL highlighting"},
+    "lazysql":     {"cmd": "lazysql",      "args": "",        "cat": "database",       "brew": "",            "desc": "Multi-database SQL client (Postgres, MySQL, SQLite)",       "install": "go install github.com/jorgerojas26/lazysql@latest"},
+    "shell":       {"cmd": "",             "args": "",        "cat": "terminal",       "brew": "",            "desc": "Empty terminal — plain shell session"},
 }
 
 # ─── Layout presets ──────────────────────────────────────────────────
@@ -48,7 +48,7 @@ DEFAULT_PANELS = [
 
 
 def _resolve_dir(dir_path, root=None):
-    """Résout un chemin de répertoire (expansion ~ et relatif à root)."""
+    """Resolve a directory path (~ expansion and relative to root)."""
     d = dir_path.replace("~", str(Path.home()))
     if root and not os.path.isabs(d):
         root_expanded = root.replace("~", str(Path.home()))
@@ -57,7 +57,7 @@ def _resolve_dir(dir_path, root=None):
 
 
 def _panel_to_kdl(panel, cwd, indent=4):
-    """Convertit un panel en bloc KDL pane."""
+    """Convert a panel to a KDL pane block."""
     app = panel.get("app", "")
     command = panel.get("command", "")
     pad = " " * indent
@@ -73,7 +73,7 @@ def _panel_to_kdl(panel, cwd, indent=4):
         args = info["args"]
         if cmd and not shutil.which(cmd):
             brew = info.get("brew", "")
-            msg = f"App non trouvée : {app}"
+            msg = f"App not found: {app}"
             if brew:
                 msg += f" — brew install {brew}"
             return f'{pad}pane command="bash" cwd="{cwd}" {{\n{pad2}args "-c" "echo \\"{msg}\\"; sleep infinity"\n{pad}}}'
@@ -87,7 +87,7 @@ def _panel_to_kdl(panel, cwd, indent=4):
 
 
 def _generate_tab_kdl(tab, root=None):
-    """Génère le KDL d'un tab complet."""
+    """Generate the KDL for a complete tab."""
     name = tab["name"]
     cwd = _resolve_dir(tab["dir"], root)
     layout = tab.get("layout", "default")
@@ -99,11 +99,10 @@ def _generate_tab_kdl(tab, root=None):
     lines.append('        }')
 
     if layout == "solo":
-        # Terminal seul
         lines.append(f'        pane cwd="{cwd}"')
 
     elif layout == "wide":
-        # Terminal en haut (70%), panels en bas (30%)
+        # Terminal on top (70%), panels on bottom (30%)
         lines.append('        pane split_direction="horizontal" {')
         lines.append(f'            pane size="70%" cwd="{cwd}"')
         if panels:
@@ -114,7 +113,7 @@ def _generate_tab_kdl(tab, root=None):
         lines.append('        }')
 
     elif layout == "monitoring":
-        # Terminal à gauche (60%), stack de panels à droite (40%)
+        # Terminal on the left (60%), stacked panels on the right (40%)
         lines.append('        pane split_direction="vertical" {')
         lines.append(f'            pane size="60%" cwd="{cwd}"')
         if panels:
@@ -125,7 +124,7 @@ def _generate_tab_kdl(tab, root=None):
         lines.append('        }')
 
     else:
-        # "default" — layout actuel : terminal principal (60%) + panels (40%)
+        # "default" — main terminal (60%) + panels (40%)
         lines.append('        pane split_direction="vertical" {')
         lines.append('            pane split_direction="horizontal" size="60%" {')
         lines.append(f'                pane size="70%" cwd="{cwd}"')
@@ -146,7 +145,7 @@ def _generate_tab_kdl(tab, root=None):
 
 
 def _panel_tmux_cmd(panel, cwd):
-    """Retourne la commande à envoyer dans un pane tmux pour un panel."""
+    """Return the command to send to a tmux pane for a panel."""
     app = panel.get("app", "")
     command = panel.get("command", "")
 
@@ -160,7 +159,7 @@ def _panel_tmux_cmd(panel, cwd):
         args = info["args"]
         if cmd and not shutil.which(cmd):
             brew = info.get("brew", "")
-            msg = f"App non trouvée : {app}"
+            msg = f"App not found: {app}"
             if brew:
                 msg += f" — brew install {brew}"
             return f"echo '{msg}'"
@@ -174,11 +173,11 @@ def _panel_tmux_cmd(panel, cwd):
 
 
 def _generate_tab_tmux(session, tab_index, tab, root=None):
-    """Génère les commandes tmux pour un tab.
+    """Generate tmux commands for a tab.
 
-    Utilise la navigation relative (-L, -R, -D) au lieu d'indices absolus
-    pour être compatible avec n'importe quel base-index / pane-base-index.
-    Après chaque split-window, le pane actif est le nouveau pane créé.
+    Uses relative navigation (-L, -R, -D) instead of absolute indices
+    to be compatible with any base-index / pane-base-index setting.
+    After each split-window, the active pane is the newly created one.
     """
     name = tab["name"]
     cwd = _resolve_dir(tab["dir"], root)
@@ -192,32 +191,25 @@ def _generate_tab_tmux(session, tab_index, tab, root=None):
     else:
         lines.append(f'tmux new-window -t "{session}" -n "{name}" -c "{cwd}"')
 
-    # Après new-session/new-window, le pane unique est actif
-
     if layout == "solo":
         pass
 
     elif layout == "wide":
-        # Terminal en haut, panels en bas (30%)
-        # Split vertical → le pane du bas est actif (c'est le nouveau)
+        # Terminal on top, panels on bottom (30%)
         lines.append(f'tmux split-window -v -c "{cwd}" -p 30')
-        # On est dans le pane du bas, envoyer la commande du premier panel
         if panels:
             cmd = _panel_tmux_cmd(panels[0], cwd)
             if cmd:
                 lines.append(f'tmux send-keys "{cmd}" Enter')
-            # Panels suivants : split horizontal à droite du pane actif
             for p in panels[1:]:
                 lines.append(f'tmux split-window -h -c "{cwd}"')
                 cmd = _panel_tmux_cmd(p, cwd)
                 if cmd:
                     lines.append(f'tmux send-keys "{cmd}" Enter')
-        # Revenir au terminal principal (pane du haut)
         lines.append('tmux select-pane -t "{top}"')
 
     elif layout == "monitoring":
-        # Terminal à gauche (60%), panels empilés à droite (40%)
-        # Split horizontal → le pane de droite est actif
+        # Terminal on the left (60%), stacked panels on the right (40%)
         lines.append(f'tmux split-window -h -c "{cwd}" -p 40')
         if panels:
             cmd = _panel_tmux_cmd(panels[0], cwd)
@@ -228,12 +220,10 @@ def _generate_tab_tmux(session, tab_index, tab, root=None):
                 cmd = _panel_tmux_cmd(p, cwd)
                 if cmd:
                     lines.append(f'tmux send-keys "{cmd}" Enter')
-        # Revenir au terminal principal (pane de gauche)
         lines.append('tmux select-pane -t "{left}"')
 
     else:
-        # "default" : terminal (60%) | panels empilés (40%)
-        # Split horizontal → pane de droite actif (40%)
+        # "default": terminal (60%) | stacked panels (40%)
         lines.append(f'tmux split-window -h -c "{cwd}" -p 40')
         if panels:
             cmd = _panel_tmux_cmd(panels[0], cwd)
@@ -244,19 +234,18 @@ def _generate_tab_tmux(session, tab_index, tab, root=None):
                 cmd = _panel_tmux_cmd(p, cwd)
                 if cmd:
                     lines.append(f'tmux send-keys "{cmd}" Enter')
-        # Revenir au terminal principal (pane de gauche)
         lines.append('tmux select-pane -t "{left}"')
 
     return '\n'.join(lines)
 
 
-# ─── Commandes ───────────────────────────────────────────────────────
+# ─── Commands ────────────────────────────────────────────────────────
 
 def cmd_render(args):
-    """Convertit un fichier TOML workspace en layout KDL Zellij."""
+    """Convert a TOML workspace file to a Zellij KDL layout."""
     toml_path = Path(args.file)
     if not toml_path.exists():
-        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        print(f"File not found: {toml_path}", file=sys.stderr)
         sys.exit(1)
 
     with open(toml_path, 'rb') as f:
@@ -267,7 +256,7 @@ def cmd_render(args):
     tabs = config.get("tabs", [])
 
     if not tabs:
-        print("Aucun tab défini dans le workspace", file=sys.stderr)
+        print("No tabs defined in workspace", file=sys.stderr)
         sys.exit(1)
 
     kdl_lines = ["layout {"]
@@ -279,10 +268,10 @@ def cmd_render(args):
 
 
 def cmd_render_tmux(args):
-    """Convertit un fichier TOML workspace en script tmux."""
+    """Convert a TOML workspace file to a tmux script."""
     toml_path = Path(args.file)
     if not toml_path.exists():
-        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        print(f"File not found: {toml_path}", file=sys.stderr)
         sys.exit(1)
 
     with open(toml_path, 'rb') as f:
@@ -294,21 +283,21 @@ def cmd_render_tmux(args):
     tabs = config.get("tabs", [])
 
     if not tabs:
-        print("Aucun tab défini dans le workspace", file=sys.stderr)
+        print("No tabs defined in workspace", file=sys.stderr)
         sys.exit(1)
 
     lines = [
         '#!/bin/bash',
-        f'# Généré par sand-workspace-helper pour la session tmux "{session}"',
+        f'# Generated by sand-workspace-helper for tmux session "{session}"',
     ]
     for i, tab in enumerate(tabs):
         lines.append(_generate_tab_tmux(session, i, tab, root))
 
-    # Supprimer la sidebar de sessions (status-left simplifié, pas de liste de sessions)
+    # Remove session sidebar (simplified status-left, no session list)
     lines.append(f'tmux set-option -t "{session}" status-left "#[fg=#cccccc,bold] {session} #[default]│ "')
     lines.append(f'tmux set-option -t "{session}" status-right ""')
 
-    # Sélectionner la première fenêtre et attacher
+    # Select first window and attach
     lines.append(f'tmux select-window -t "{session}:{{start}}"')
     lines.append(f'exec tmux attach-session -t "{session}"')
 
@@ -316,17 +305,17 @@ def cmd_render_tmux(args):
 
 
 def cmd_validate(args):
-    """Vérifie la syntaxe et les chemins d'un workspace TOML."""
+    """Check the syntax and paths of a TOML workspace."""
     toml_path = Path(args.file)
     if not toml_path.exists():
-        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        print(f"File not found: {toml_path}", file=sys.stderr)
         sys.exit(1)
 
     try:
         with open(toml_path, 'rb') as f:
             config = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
-        print(f"Erreur TOML : {e}", file=sys.stderr)
+        print(f"TOML error: {e}", file=sys.stderr)
         sys.exit(1)
 
     workspace = config.get("workspace", {})
@@ -336,45 +325,45 @@ def cmd_validate(args):
     warnings = []
 
     if not tabs:
-        errors.append("Aucun tab défini")
+        errors.append("No tabs defined")
 
     for i, tab in enumerate(tabs):
         if "name" not in tab:
-            errors.append(f"Tab {i+1} : champ 'name' manquant")
+            errors.append(f"Tab {i+1}: missing 'name' field")
         if "dir" not in tab:
-            errors.append(f"Tab {i+1} : champ 'dir' manquant")
+            errors.append(f"Tab {i+1}: missing 'dir' field")
         else:
             d = _resolve_dir(tab["dir"], root)
             if not os.path.isdir(d):
-                warnings.append(f"Tab '{tab.get('name', i+1)}' : répertoire introuvable → {d}")
+                warnings.append(f"Tab '{tab.get('name', i+1)}': directory not found → {d}")
 
         layout = tab.get("layout", "default")
         if layout not in ("default", "wide", "solo", "monitoring"):
-            errors.append(f"Tab '{tab.get('name', i+1)}' : layout inconnu '{layout}'")
+            errors.append(f"Tab '{tab.get('name', i+1)}': unknown layout '{layout}'")
 
         for j, panel in enumerate(tab.get("panels", [])):
             app = panel.get("app", "")
             cmd = panel.get("command", "")
             if app and app not in APPS_CATALOG and not cmd:
-                warnings.append(f"Tab '{tab.get('name', i+1)}' panel {j+1} : app '{app}' absente du catalogue")
+                warnings.append(f"Tab '{tab.get('name', i+1)}' panel {j+1}: app '{app}' not in catalog")
 
     if errors:
         for e in errors:
-            print(f"ERREUR : {e}", file=sys.stderr)
+            print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
     if warnings:
         for w in warnings:
-            print(f"ATTENTION : {w}", file=sys.stderr)
+            print(f"WARNING: {w}", file=sys.stderr)
 
-    print(f"Workspace valide : {len(tabs)} tab(s)")
+    print(f"Valid workspace: {len(tabs)} tab(s)")
 
 
 def cmd_migrate(args):
-    """Convertit un ancien fichier workspace (texte plat) en TOML."""
+    """Convert an old plain text workspace file to TOML."""
     old_path = Path(args.file)
     if not old_path.exists():
-        print(f"Fichier introuvable : {old_path}", file=sys.stderr)
+        print(f"File not found: {old_path}", file=sys.stderr)
         sys.exit(1)
 
     name = old_path.stem
@@ -390,15 +379,15 @@ def cmd_migrate(args):
                 tabs.append({"name": parts[0], "dir": parts[1]})
 
     if not tabs:
-        print("Fichier vide ou invalide", file=sys.stderr)
+        print("Empty or invalid file", file=sys.stderr)
         sys.exit(1)
 
-    # Détecter un root commun
+    # Detect common root
     dirs_expanded = [_resolve_dir(t["dir"]) for t in tabs]
     common = os.path.commonpath(dirs_expanded) if len(dirs_expanded) > 1 else ""
     use_root = common and common != str(Path.home()) and len(common) > len(str(Path.home()))
 
-    # Générer le TOML
+    # Generate TOML
     lines = ['[workspace]']
     lines.append(f'name = "{name}"')
     if use_root:
@@ -421,7 +410,7 @@ def cmd_migrate(args):
 
 
 def cmd_catalog(args):
-    """Liste les apps TUI du catalogue avec statut d'installation."""
+    """List TUI apps from the catalog with install status."""
     fmt = args.format if hasattr(args, 'format') else 'text'
 
     if fmt == 'fzf':
@@ -432,18 +421,17 @@ def cmd_catalog(args):
             print(f"{marker} {name:<15} ({info['cat']})")
         return
 
-    # Grouper par catégorie
+    # Group by category
     by_cat = {}
     for name, info in sorted(APPS_CATALOG.items()):
         cat = info["cat"]
         by_cat.setdefault(cat, []).append((name, info))
 
     cat_order = [
-        "git", "fichiers", "monitoring", "docker", "kubernetes",
+        "git", "files", "monitoring", "docker", "kubernetes",
         "search/replace", "watch (rust)", "watch", "logs",
         "http", "database", "terminal",
     ]
-    # Catégories non listées dans l'ordre explicite
     remaining = [c for c in by_cat if c not in cat_order]
 
     for cat in cat_order + remaining:
@@ -456,7 +444,7 @@ def cmd_catalog(args):
             desc = info.get("desc", "")
             installed = not cmd or shutil.which(cmd)
 
-            status = "✓" if installed else "✗"
+            status = "\u2713" if installed else "\u2717"
             install_hint = ""
             if not installed:
                 custom_install = info.get("install", "")
@@ -469,11 +457,11 @@ def cmd_catalog(args):
 
 
 def cmd_wizard(args):
-    """Génère un workspace TOML interactivement."""
+    """Generate a workspace TOML interactively."""
     has_fzf = shutil.which("fzf") is not None
 
     def ask(prompt, default=""):
-        """Demande une saisie avec valeur par défaut."""
+        """Ask for input with a default value."""
         suffix = f" [{default}]" if default else ""
         try:
             val = input(f"{prompt}{suffix}: ").strip()
@@ -483,7 +471,7 @@ def cmd_wizard(args):
         return val or default
 
     def ask_choice(prompt, choices, default=0):
-        """Sélection parmi des choix (fzf ou numérique)."""
+        """Select from choices (fzf or numeric fallback)."""
         if has_fzf:
             choice_str = '\n'.join(choices)
             try:
@@ -496,13 +484,13 @@ def cmd_wizard(args):
             except Exception:
                 pass
 
-        # Fallback numérique
-        print(f"\n{prompt} :")
+        # Numeric fallback
+        print(f"\n{prompt}:")
         for i, c in enumerate(choices):
-            marker = "→" if i == default else " "
+            marker = "\u2192" if i == default else " "
             print(f"  {marker} {i+1}) {c}")
         try:
-            num = input(f"Choix [1-{len(choices)}, défaut {default+1}]: ").strip()
+            num = input(f"Choice [1-{len(choices)}, default {default+1}]: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             sys.exit(0)
@@ -514,8 +502,7 @@ def cmd_wizard(args):
             return choices[default]
 
     def ask_apps():
-        """Sélection des apps de panel."""
-        # Filtrer les apps installées
+        """Select panel apps."""
         available = []
         for name, info in sorted(APPS_CATALOG.items()):
             cmd = info["cmd"]
@@ -527,7 +514,7 @@ def cmd_wizard(args):
             try:
                 result = subprocess.run(
                     ['fzf', '--multi', '--prompt', 'Apps > ',
-                     '--header', 'Tab/Shift+Tab pour sélectionner, Entrée pour valider',
+                     '--header', 'Tab/Shift+Tab to select, Enter to confirm',
                      '--height=15', '--reverse'],
                     input=items, capture_output=True, text=True
                 )
@@ -541,13 +528,13 @@ def cmd_wizard(args):
             except Exception:
                 pass
 
-        # Fallback numérique
-        print("\nApps disponibles :")
+        # Numeric fallback
+        print("\nAvailable apps:")
         for i, name in enumerate(available):
             cat = APPS_CATALOG[name]["cat"]
             print(f"  {i+1}) {name} ({cat})")
         try:
-            nums = input("Numéros (ex: 1 3 5, défaut: lazygit yazi): ").strip()
+            nums = input("Numbers (e.g. 1 3 5, default: lazygit yazi): ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             sys.exit(0)
@@ -563,61 +550,61 @@ def cmd_wizard(args):
                 pass
         return selected or ["lazygit", "yazi"]
 
-    # ── Étape 1 : Nom ──
-    print("╔══════════════════════════════════════╗")
-    print("║   sand workspace new — assistant     ║")
-    print("╚══════════════════════════════════════╝")
+    # ── Step 1: Name ──
+    print("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557")
+    print("\u2551   sand workspace new \u2014 wizard       \u2551")
+    print("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d")
     print()
 
-    name = ask("Nom du workspace")
+    name = ask("Workspace name")
     if not name:
-        print("Nom requis.", file=sys.stderr)
+        print("Name required.", file=sys.stderr)
         sys.exit(1)
 
-    # ── Étape 2 : Description ──
-    description = ask("Description (optionnel, Entrée pour skip)")
+    # ── Step 2: Description ──
+    description = ask("Description (optional, Enter to skip)")
 
-    # ── Étape 3 : Répertoire racine ──
-    root = ask("Répertoire racine (optionnel)")
+    # ── Step 3: Root directory ──
+    root = ask("Root directory (optional)")
     if root:
         root = root.replace("~", str(Path.home()))
         if not os.path.isdir(root):
-            print(f"ATTENTION : répertoire introuvable → {root}", file=sys.stderr)
+            print(f"WARNING: directory not found \u2192 {root}", file=sys.stderr)
 
-    # ── Étape 4 : Tabs ──
+    # ── Step 4: Tabs ──
     tabs = []
-    print("\n── Tabs ──")
+    print("\n\u2500\u2500 Tabs \u2500\u2500")
     while True:
         tab_num = len(tabs) + 1
-        print(f"\nTab {tab_num} :")
-        tab_name = ask("  Nom du tab")
+        print(f"\nTab {tab_num}:")
+        tab_name = ask("  Tab name")
         if not tab_name:
             if tabs:
                 break
-            print("Au moins un tab requis.")
+            print("At least one tab required.")
             continue
 
-        tab_dir = ask("  Répertoire")
+        tab_dir = ask("  Directory")
         if not tab_dir:
             tab_dir = tab_name
 
         layout = ask_choice("  Layout", ["default", "wide", "solo", "monitoring"])
 
-        print(f"\n  Panels pour '{tab_name}' :")
+        print(f"\n  Panels for '{tab_name}':")
         apps = ask_apps()
 
         tab = {"name": tab_name, "dir": tab_dir, "layout": layout, "panels": apps}
         tabs.append(tab)
 
         try:
-            more = input("\nAjouter un autre tab ? [o/N] ").strip().lower()
+            more = input("\nAdd another tab? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print()
             break
-        if more not in ('o', 'oui', 'y', 'yes'):
+        if more not in ('y', 'yes', 'o', 'oui'):
             break
 
-    # ── Étape 5 : Génération du TOML ──
+    # ── Step 5: Generate TOML ──
     toml_lines = ['[workspace]']
     toml_lines.append(f'name = "{name}"')
     if description:
@@ -641,40 +628,40 @@ def cmd_wizard(args):
 
     toml_content = '\n'.join(toml_lines)
 
-    # ── Étape 6 : Résumé et confirmation ──
-    print("\n── Résumé ──")
+    # ── Step 6: Summary and confirmation ──
+    print("\n\u2500\u2500 Summary \u2500\u2500")
     print(toml_content)
 
     try:
-        confirm = input("Écrire ce workspace ? [O/n] ").strip().lower()
+        confirm = input("Write this workspace? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print("\nAnnulé.")
+        print("\nCancelled.")
         sys.exit(0)
 
     if confirm in ('n', 'non', 'no'):
-        print("Annulé.")
+        print("Cancelled.")
         sys.exit(0)
 
-    # Écriture
+    # Write file
     output_dir = args.output_dir if hasattr(args, 'output_dir') and args.output_dir else str(Path.home() / '.config' / 'sand' / 'workspaces')
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{name}.toml")
 
     if os.path.exists(output_path):
         try:
-            overwrite = input(f"Le fichier {output_path} existe déjà. Écraser ? [o/N] ").strip().lower()
+            overwrite = input(f"File {output_path} already exists. Overwrite? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
-            print("\nAnnulé.")
+            print("\nCancelled.")
             sys.exit(0)
-        if overwrite not in ('o', 'oui', 'y', 'yes'):
-            print("Annulé.")
+        if overwrite not in ('y', 'yes', 'o', 'oui'):
+            print("Cancelled.")
             sys.exit(0)
 
     with open(output_path, 'w') as f:
         f.write(toml_content)
 
-    print(f"\n✓ Workspace créé : {output_path}")
-    print(f"  Lancer avec : sand {name}")
+    print(f"\n\u2713 Workspace created: {output_path}")
+    print(f"  Launch with: sand {name}")
 
 
 # ─── Main ────────────────────────────────────────────────────────────
@@ -682,34 +669,34 @@ def cmd_wizard(args):
 def main():
     parser = argparse.ArgumentParser(
         prog='sand-workspace-helper',
-        description='Parsing TOML et génération KDL pour les workspaces sand',
+        description='TOML parsing and KDL generation for sand workspaces',
     )
     sub = parser.add_subparsers(dest='command')
 
     # render
-    render = sub.add_parser('render', help='Convertit un .toml en layout KDL')
-    render.add_argument('file', help='Fichier workspace .toml')
+    render = sub.add_parser('render', help='Convert a .toml to a KDL layout')
+    render.add_argument('file', help='Workspace .toml file')
 
     # render-tmux
-    render_tmux = sub.add_parser('render-tmux', help='Convertit un .toml en script tmux')
-    render_tmux.add_argument('file', help='Fichier workspace .toml')
-    render_tmux.add_argument('--session', help='Nom de la session tmux')
+    render_tmux = sub.add_parser('render-tmux', help='Convert a .toml to a tmux script')
+    render_tmux.add_argument('file', help='Workspace .toml file')
+    render_tmux.add_argument('--session', help='tmux session name')
 
     # validate
-    validate = sub.add_parser('validate', help='Vérifie un workspace .toml')
-    validate.add_argument('file', help='Fichier workspace .toml')
+    validate = sub.add_parser('validate', help='Validate a workspace .toml')
+    validate.add_argument('file', help='Workspace .toml file')
 
     # migrate
-    migrate = sub.add_parser('migrate', help='Convertit un ancien workspace en TOML')
-    migrate.add_argument('file', help='Ancien fichier workspace (texte plat)')
+    migrate = sub.add_parser('migrate', help='Convert an old workspace to TOML')
+    migrate.add_argument('file', help='Old workspace file (plain text)')
 
     # catalog
-    catalog = sub.add_parser('catalog', help='Liste les apps TUI')
+    catalog = sub.add_parser('catalog', help='List TUI apps')
     catalog.add_argument('--format', choices=['text', 'fzf'], default='text')
 
     # wizard
-    wizard = sub.add_parser('wizard', help='Crée un workspace interactivement')
-    wizard.add_argument('--output-dir', help='Répertoire de sortie')
+    wizard = sub.add_parser('wizard', help='Create a workspace interactively')
+    wizard.add_argument('--output-dir', help='Output directory')
 
     args = parser.parse_args()
 

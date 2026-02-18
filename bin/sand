@@ -1,23 +1,23 @@
 #!/bin/bash
-# sand — Lance un workspace SAND (Split/Across/Navigate/Destroy)
+# sand — Launch a SAND workspace (Split/Across/Navigate/Destroy)
 #
-# Usage : sand [répertoire] [options]
-#   sand                     Nouvelle session dans le répertoire courant
-#   sand ~/projet            Nouvelle session dans un répertoire spécifique
-#   sand diderot             Ouvrir un workspace nommé (~/.config/sand/workspaces/)
-#   sand --solo              Claude Code seul
-#   sand --restore / -r      Réattacher la dernière session (ou choisir via fzf)
-#   sand --attach / -a       Réattacher la session du projet courant
-#   sand --list / -l         Lister les sessions actives
-#   sand --kill / -k         Fermer une session (sélecteur fzf)
-#   sand --kill-all / -K     Fermer toutes les sessions
-#   sand --keys              Aide-mémoire des raccourcis Zellij
-#   sand --tips              Lancer avec un pane aide-mémoire
-#   sand --open dir1 dir2    Lancer plusieurs projets dans des tabs Zellij
+# Usage: sand [directory] [options]
+#   sand                     New session in the current directory
+#   sand ~/project           New session in a specific directory
+#   sand diderot             Open a named workspace (~/.config/sand/workspaces/)
+#   sand --solo              Claude Code only
+#   sand --restore / -r      Reattach the last session (or choose via fzf)
+#   sand --attach / -a       Reattach the current project's session
+#   sand --list / -l         List active sessions
+#   sand --kill / -k         Close a session (fzf selector)
+#   sand --kill-all / -K     Close all sessions
+#   sand --keys              Zellij shortcuts cheat sheet
+#   sand --tips              Launch with a cheat sheet pane
+#   sand --open dir1 dir2    Launch multiple projects in Zellij tabs
 #
-# Backends :
-#   sand --tmux              Utiliser tmux au lieu de Zellij
-#   sand --open --ghostty dir1 dir2   Ouvrir dans des onglets Ghostty
+# Backends:
+#   sand --tmux              Use tmux instead of Zellij
+#   sand --open --ghostty dir1 dir2   Open in Ghostty tabs
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SCRIPT_DIR}/../layouts}"
 WORKSPACES_DIR="${SAND_WORKSPACES_DIR:-${HOME}/.config/sand/workspaces}"
 
-# --- Parsing des arguments ---
+# --- Argument parsing ---
 LAYOUT="default"
 ACTION="create"
 BACKEND="zellij"
@@ -57,7 +57,7 @@ for arg in "$@"; do
                 ACTION="workspace"
             fi
             ;;
-        -*)               echo "Usage : sand [workspace|répertoire] [--solo|--keys|--tips|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
+        -*)               echo "Usage: sand [workspace|directory] [--solo|--keys|--tips|--tmux|--open [--ghostty] dir1 dir2 ...]" >&2; exit 1 ;;
         *)
             if [[ "$ACTION" == "workspace" ]]; then
                 if [[ -z "$WS_SUBCOMMAND" ]]; then
@@ -67,7 +67,7 @@ for arg in "$@"; do
                 fi
             elif [[ "$ACTION" == "open" ]]; then
                 OPEN_DIRS+=("$arg")
-            # Workspace nommé ? (pas un chemin, fichier TOML ou ancien format dans workspaces/)
+            # Named workspace? (not a path, TOML or old format file in workspaces/)
             elif [[ -z "$PROJECT_DIR" && ! "$arg" =~ ^[/~.] && ( -f "${WORKSPACES_DIR}/${arg}.toml" || -f "${WORKSPACES_DIR}/${arg}" ) ]]; then
                 WORKSPACE="$arg"
             else
@@ -77,30 +77,30 @@ for arg in "$@"; do
     esac
 done
 
-# --- Aide-mémoire raccourcis Zellij ---
+# --- Zellij shortcuts cheat sheet ---
 show_keys() {
     cat <<'KEYS'
 
-  SAND — Raccourcis Zellij
+  SAND — Zellij Shortcuts
   ────────────────────────
 
   Navigation
-    Alt + ←/→/↑/↓      Changer de pane
-    Alt + 1..9          Aller au tab N
+    Alt + ←/→/↑/↓      Switch pane
+    Alt + 1..9          Go to tab N
 
-  Panes  (Ctrl+P puis…)
-    R  Split droite     D  Split bas
-    X  Fermer           F  Plein écran
-    W  Flottant
+  Panes  (Ctrl+P then…)
+    R  Split right      D  Split down
+    X  Close            F  Fullscreen
+    W  Floating
 
-  Tabs  (Ctrl+T puis…)
-    N  Nouveau          X  Fermer
-    R  Renommer
+  Tabs  (Ctrl+T then…)
+    N  New              X  Close
+    R  Rename
 
-  Resize  (Ctrl+N puis flèches)
+  Resize  (Ctrl+N then arrows)
 
-  Session  (Ctrl+O puis…)
-    D  Détacher         W  Session manager
+  Session  (Ctrl+O then…)
+    D  Detach           W  Session manager
 
 KEYS
 }
@@ -111,7 +111,7 @@ if [[ "$ACTION" == "keys" ]]; then
 fi
 
 # =============================================
-# Sous-commande workspace
+# Workspace subcommand
 # =============================================
 
 if [[ "$ACTION" == "workspace" ]]; then
@@ -120,7 +120,7 @@ if [[ "$ACTION" == "workspace" ]]; then
             python3 "$HELPER" wizard
             ;;
         list|ls)
-            echo "Workspaces Sand :"
+            echo "Sand workspaces:"
             for f in "$WORKSPACES_DIR"/*; do
                 [[ -f "$f" ]] || continue
                 [[ "$f" == *.bak ]] && continue
@@ -134,52 +134,52 @@ ws = c.get('workspace', {})
 tabs = c.get('tabs', [])
 desc = ws.get('description', '')
 names = ', '.join(t.get('name', '?') for t in tabs)
-print(f'{len(tabs)} tab(s) : {names}')
+print(f'{len(tabs)} tab(s): {names}')
 if desc: print(f'  {desc}')
 " 2>/dev/null)
                     echo "  ● $name  $desc"
                 else
                     lines=$(grep -cv '^#\|^$' "$f" 2>/dev/null || echo 0)
-                    echo "  ○ $name  (ancien format, $lines tab(s) — sand workspace migrate)"
+                    echo "  ○ $name  (old format, $lines tab(s) — sand workspace migrate)"
                 fi
             done
             ;;
         show)
-            ws_name="${WS_ARGS[0]:?Usage: sand workspace show <nom>}"
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace show <name>}"
             ws_file="$WORKSPACES_DIR/${ws_name}.toml"
             if [[ ! -f "$ws_file" ]]; then
-                echo "Workspace inconnu : $ws_name" >&2
+                echo "Unknown workspace: $ws_name" >&2
                 exit 1
             fi
-            echo "── Workspace : $ws_name ──"
+            echo "── Workspace: $ws_name ──"
             python3 "$HELPER" validate "$ws_file"
             echo ""
             cat "$ws_file"
             ;;
         edit)
-            ws_name="${WS_ARGS[0]:?Usage: sand workspace edit <nom>}"
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace edit <name>}"
             ws_file="$WORKSPACES_DIR/${ws_name}.toml"
             if [[ ! -f "$ws_file" ]]; then
-                echo "Workspace inconnu : $ws_name" >&2
+                echo "Unknown workspace: $ws_name" >&2
                 exit 1
             fi
             "${EDITOR:-vi}" "$ws_file"
             python3 "$HELPER" validate "$ws_file"
             ;;
         delete|rm)
-            ws_name="${WS_ARGS[0]:?Usage: sand workspace delete <nom>}"
+            ws_name="${WS_ARGS[0]:?Usage: sand workspace delete <name>}"
             ws_file="$WORKSPACES_DIR/${ws_name}.toml"
             if [[ ! -f "$ws_file" ]]; then
-                echo "Workspace inconnu : $ws_name" >&2
+                echo "Unknown workspace: $ws_name" >&2
                 exit 1
             fi
-            echo -n "Supprimer le workspace '$ws_name' ? [o/N] "
+            echo -n "Delete workspace '$ws_name'? [y/N] "
             read -r confirm
             if [[ "$confirm" =~ ^[oOyY] ]]; then
                 rm "$ws_file"
-                echo "Workspace '$ws_name' supprimé."
+                echo "Workspace '$ws_name' deleted."
             else
-                echo "Annulé."
+                echo "Cancelled."
             fi
             ;;
         migrate)
@@ -190,44 +190,44 @@ if desc: print(f'  {desc}')
                 name=$(basename "$f")
                 toml_file="$WORKSPACES_DIR/${name}.toml"
                 if [[ -f "$toml_file" ]]; then
-                    echo "  ⏭ $name — .toml existe déjà"
+                    echo "  ⏭ $name — .toml already exists"
                     continue
                 fi
                 python3 "$HELPER" migrate "$f" > "$toml_file"
                 mv "$f" "${f}.bak"
-                echo "  ✓ $name → ${name}.toml (ancien sauvegardé en .bak)"
+                echo "  ✓ $name → ${name}.toml (old file backed up as .bak)"
                 migrated=$((migrated + 1))
             done
             if [[ "$migrated" -eq 0 ]]; then
-                echo "Rien à migrer."
+                echo "Nothing to migrate."
             else
-                echo "$migrated workspace(s) migré(s)."
+                echo "$migrated workspace(s) migrated."
             fi
             ;;
         catalog)
             python3 "$HELPER" catalog
             ;;
         "")
-            echo "sand workspace — gestion des workspaces"
+            echo "sand workspace — workspace management"
             echo ""
-            echo "  new                 Créer un workspace (wizard interactif)"
-            echo "  list                Lister les workspaces"
-            echo "  show <nom>          Afficher un workspace"
-            echo "  edit <nom>          Éditer un workspace dans \$EDITOR"
-            echo "  delete <nom>        Supprimer un workspace"
-            echo "  migrate             Migrer les anciens fichiers texte → TOML"
-            echo "  catalog             Catalogue d'apps TUI disponibles"
+            echo "  new                 Create a workspace (interactive wizard)"
+            echo "  list                List workspaces"
+            echo "  show <name>         Show a workspace"
+            echo "  edit <name>         Edit a workspace in \$EDITOR"
+            echo "  delete <name>       Delete a workspace"
+            echo "  migrate             Migrate old plain text files to TOML"
+            echo "  catalog             Available TUI apps catalog"
             ;;
         *)
-            echo "Sous-commande inconnue : $WS_SUBCOMMAND" >&2
-            echo "Utiliser : sand workspace [new|list|show|edit|delete|migrate|catalog]" >&2
+            echo "Unknown subcommand: $WS_SUBCOMMAND" >&2
+            echo "Usage: sand workspace [new|list|show|edit|delete|migrate|catalog]" >&2
             exit 1
             ;;
     esac
     exit 0
 fi
 
-# Pane tips pour les layouts dynamiques
+# Tips pane for dynamic layouts
 TIPS_PANE=""
 if [[ "$TIPS" == true ]]; then
     TIPS_PANE='
@@ -236,30 +236,30 @@ if [[ "$TIPS" == true ]]; then
                 }'
 fi
 
-# --- Workspace nommé → générer le layout depuis TOML ---
+# --- Named workspace → generate layout from TOML ---
 if [[ -n "$WORKSPACE" ]]; then
     TOML_FILE="${WORKSPACES_DIR}/${WORKSPACE}.toml"
     OLD_FILE="${WORKSPACES_DIR}/${WORKSPACE}"
 
-    # Migration automatique si ancien format détecté
+    # Auto-migrate if old format detected
     if [[ ! -f "$TOML_FILE" && -f "$OLD_FILE" ]]; then
-        echo "Migration du workspace $WORKSPACE vers TOML..."
+        echo "Migrating workspace $WORKSPACE to TOML..."
         python3 "$HELPER" migrate "$OLD_FILE" > "$TOML_FILE"
         mv "$OLD_FILE" "${OLD_FILE}.bak"
-        echo "  ✓ Migré vers ${WORKSPACE}.toml (ancien sauvegardé en .bak)"
+        echo "  ✓ Migrated to ${WORKSPACE}.toml (old file backed up as .bak)"
     fi
 
     if [[ ! -f "$TOML_FILE" ]]; then
-        echo "Workspace introuvable : $WORKSPACE" >&2
-        echo "Workspaces disponibles :"
+        echo "Workspace not found: $WORKSPACE" >&2
+        echo "Available workspaces:"
         ls -1 "$WORKSPACES_DIR"/*.toml 2>/dev/null | xargs -I{} basename {} .toml | sed 's/^/  /'
         exit 1
     fi
 
     if [[ "$BACKEND" == "tmux" ]]; then
-        # --- Backend tmux ---
+        # --- tmux backend ---
         if tmux has-session -t "$WORKSPACE" 2>/dev/null; then
-            echo "Session tmux $WORKSPACE existante — réattachement."
+            echo "Existing tmux session $WORKSPACE — reattaching."
             exec tmux attach-session -t "$WORKSPACE"
         fi
 
@@ -267,16 +267,16 @@ if [[ -n "$WORKSPACE" ]]; then
         trap 'rm -f "$TMPFILE"' EXIT
 
         if ! python3 "$HELPER" render-tmux "$TOML_FILE" --session "$WORKSPACE" > "$TMPFILE"; then
-            echo "Erreur lors de la génération tmux pour $WORKSPACE" >&2
+            echo "Error generating tmux layout for $WORKSPACE" >&2
             exit 1
         fi
 
-        echo "Lancement du workspace $WORKSPACE (tmux)..."
+        echo "Launching workspace $WORKSPACE (tmux)..."
         exec bash "$TMPFILE"
     else
-        # --- Backend Zellij (défaut) ---
+        # --- Zellij backend (default) ---
         if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${WORKSPACE} "; then
-            echo "Workspace $WORKSPACE existant — réattachement."
+            echo "Existing workspace $WORKSPACE — reattaching."
             exec zellij attach "$WORKSPACE"
         fi
 
@@ -284,20 +284,20 @@ if [[ -n "$WORKSPACE" ]]; then
         trap 'rm -f "$TMPFILE"' EXIT
 
         if ! python3 "$HELPER" render "$TOML_FILE" > "$TMPFILE"; then
-            echo "Erreur lors de la génération du layout pour $WORKSPACE" >&2
+            echo "Error generating layout for $WORKSPACE" >&2
             exit 1
         fi
 
-        echo "Lancement du workspace $WORKSPACE..."
+        echo "Launching workspace $WORKSPACE..."
         exec zellij --session "$WORKSPACE" --new-session-with-layout "$TMPFILE"
     fi
 fi
 
 PROJECT_DIR="${PROJECT_DIR:-.}"
-PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $1" >&2; exit 1; }
+PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd)" || { echo "Directory not found: $1" >&2; exit 1; }
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 
-# --- Détection de sous-projets (répertoire parent avec plusieurs projets git) ---
+# --- Sub-project detection (parent directory with multiple git projects) ---
 if [[ "$ACTION" == "create" && "$LAYOUT" == "default" ]]; then
     SUBPROJECTS=()
     for sub in "$PROJECT_DIR"/*/; do
@@ -305,25 +305,25 @@ if [[ "$ACTION" == "create" && "$LAYOUT" == "default" ]]; then
     done
 
     if [[ ${#SUBPROJECTS[@]} -ge 2 ]]; then
-        # Sélection des sous-projets
+        # Sub-project selection
         SELECTED=()
         if command -v fzf >/dev/null 2>&1; then
             LIST=""
             for sub in "${SUBPROJECTS[@]}"; do
                 LIST+="$(basename "$sub")"$'\n'
             done
-            PICKS="$(echo "$LIST" | sed '/^$/d' | fzf --multi --prompt="Tabs > " --header="Tab/Shift+Tab pour sélectionner, Entrée pour valider" --height=15 --reverse)" || exit 0
+            PICKS="$(echo "$LIST" | sed '/^$/d' | fzf --multi --prompt="Tabs > " --header="Tab/Shift+Tab to select, Enter to confirm" --height=15 --reverse)" || exit 0
             while IFS= read -r name; do
                 for sub in "${SUBPROJECTS[@]}"; do
                     [[ "$(basename "$sub")" == "$name" ]] && SELECTED+=("$sub")
                 done
             done <<< "$PICKS"
         else
-            echo "Répertoire $PROJECT_NAME contient ${#SUBPROJECTS[@]} projets :"
+            echo "Directory $PROJECT_NAME contains ${#SUBPROJECTS[@]} projects:"
             for i in "${!SUBPROJECTS[@]}"; do
                 echo "  $((i+1))) $(basename "${SUBPROJECTS[$i]}")"
             done
-            echo -n "Numéros (ex: 1 2 3, ou * pour tous) > "
+            echo -n "Numbers (e.g. 1 2 3, or * for all) > "
             read -r NUMS
             if [[ "$NUMS" == "*" ]]; then
                 SELECTED=("${SUBPROJECTS[@]}")
@@ -335,10 +335,10 @@ if [[ "$ACTION" == "create" && "$LAYOUT" == "default" ]]; then
             fi
         fi
 
-        [[ ${#SELECTED[@]} -eq 0 ]] && { echo "Aucun projet sélectionné." >&2; exit 0; }
+        [[ ${#SELECTED[@]} -eq 0 ]] && { echo "No project selected." >&2; exit 0; }
 
         if [[ ${#SELECTED[@]} -eq 1 ]]; then
-            # Un seul projet → session simple
+            # Single project → simple session
             PROJECT_DIR="$(cd "${SELECTED[0]}" && pwd)"
             PROJECT_NAME="$(basename "$PROJECT_DIR")"
         else
@@ -368,31 +368,31 @@ TABEOF
             done
             echo "}" >> "$TMPFILE"
 
-            # Réattacher si la session existe
+            # Reattach if session exists
             if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
-                echo "Session $PROJECT_NAME existante — réattachement."
+                echo "Existing session $PROJECT_NAME — reattaching."
                 exec zellij attach "$PROJECT_NAME"
             fi
 
-            echo "Lancement de ${#SELECTED[@]} tabs..."
+            echo "Launching ${#SELECTED[@]} tabs..."
             exec zellij --session "$PROJECT_NAME" --new-session-with-layout "$TMPFILE"
         fi
     fi
 fi
 
-# --- Détection de nesting ---
+# --- Nesting detection ---
 if [[ "$ACTION" == "create" ]]; then
     if [[ -n "${ZELLIJ:-}" && "$BACKEND" == "zellij" ]]; then
-        echo "Déjà dans Zellij. Utilise Ctrl+O puis W pour switcher de session." >&2
+        echo "Already inside Zellij. Use Ctrl+O then W to switch sessions." >&2
         exit 1
     fi
     if [[ -n "${TMUX:-}" && "$BACKEND" == "tmux" ]]; then
-        echo "Déjà dans tmux. Utilise prefix+s pour switcher de session." >&2
+        echo "Already inside tmux. Use prefix+s to switch sessions." >&2
         exit 1
     fi
 fi
 
-# --- Vérification des dépendances ---
+# --- Dependency check ---
 missing=()
 if [[ "$BACKEND" == "zellij" ]]; then
     command -v zellij >/dev/null 2>&1 || missing+=("zellij")
@@ -405,50 +405,50 @@ if [[ "$LAYOUT" != "solo" ]]; then
 fi
 
 if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "Dépendances manquantes : ${missing[*]}" >&2
-    echo "Installe-les avec : brew install ${missing[*]}" >&2
+    echo "Missing dependencies: ${missing[*]}" >&2
+    echo "Install with: brew install ${missing[*]}" >&2
     exit 1
 fi
 
 # =============================================
-# Actions rapides (indépendantes du backend)
+# Quick actions (backend-independent)
 # =============================================
 
 if [[ "$ACTION" == "list" ]]; then
-    echo "Sessions SAND actives :"
+    echo "Active SAND sessions:"
     if [[ "$BACKEND" == "tmux" ]]; then
-        tmux list-sessions 2>/dev/null || echo "  (aucune)"
+        tmux list-sessions 2>/dev/null || echo "  (none)"
     else
-        zellij list-sessions 2>/dev/null || echo "  (aucune)"
+        zellij list-sessions 2>/dev/null || echo "  (none)"
     fi
     exit 0
 fi
 
 if [[ "$ACTION" == "restore" ]]; then
     if [[ "$BACKEND" == "tmux" ]]; then
-        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "Aucune session active." >&2; exit 1; }
+        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "No active sessions." >&2; exit 1; }
     else
         SESSIONS="$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}')" || true
     fi
 
-    [[ -z "$SESSIONS" ]] && { echo "Aucune session active." >&2; exit 1; }
+    [[ -z "$SESSIONS" ]] && { echo "No active sessions." >&2; exit 1; }
 
-    # Une seule session → réattacher directement
+    # Single session → reattach directly
     COUNT="$(echo "$SESSIONS" | wc -l | tr -d ' ')"
     if [[ "$COUNT" -eq 1 ]]; then
         SESSION="$SESSIONS"
     elif command -v fzf >/dev/null 2>&1; then
         SESSION="$(echo "$SESSIONS" | fzf --prompt="Session > " --height=10 --reverse)" || exit 0
     else
-        echo "Sessions disponibles :"
+        echo "Available sessions:"
         echo "$SESSIONS" | nl
-        echo -n "Numéro > "
+        echo -n "Number > "
         read -r NUM
         SESSION="$(echo "$SESSIONS" | sed -n "${NUM}p")"
-        [[ -z "$SESSION" ]] && { echo "Choix invalide." >&2; exit 1; }
+        [[ -z "$SESSION" ]] && { echo "Invalid choice." >&2; exit 1; }
     fi
 
-    echo "Réattachement à $SESSION..."
+    echo "Reattaching to $SESSION..."
     if [[ "$BACKEND" == "tmux" ]]; then
         exec tmux attach-session -t "$SESSION"
     else
@@ -458,40 +458,40 @@ fi
 
 if [[ "$ACTION" == "kill" ]]; then
     if [[ "$BACKEND" == "tmux" ]]; then
-        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "Aucune session active." >&2; exit 1; }
+        SESSIONS="$(tmux list-sessions -F '#S' 2>/dev/null)" || { echo "No active sessions." >&2; exit 1; }
     else
         SESSIONS="$(zellij list-sessions --no-formatting 2>/dev/null | awk '{print $1}')" || true
     fi
 
-    [[ -z "$SESSIONS" ]] && { echo "Aucune session active." >&2; exit 1; }
+    [[ -z "$SESSIONS" ]] && { echo "No active sessions." >&2; exit 1; }
 
-    # Si un répertoire est passé explicitement, tuer cette session
+    # If a directory was explicitly passed, kill that session
     if [[ "$PROJECT_DIR" != "$(pwd)" ]] || [[ $# -gt 0 && "$1" != "--kill" && "$1" != "-k" ]]; then
         SESSION="$PROJECT_NAME"
     elif command -v fzf >/dev/null 2>&1; then
-        SESSION="$(echo "$SESSIONS" | fzf --prompt="Fermer > " --height=10 --reverse)" || exit 0
+        SESSION="$(echo "$SESSIONS" | fzf --prompt="Close > " --height=10 --reverse)" || exit 0
     else
-        echo "Sessions disponibles :"
+        echo "Available sessions:"
         echo "$SESSIONS" | nl
-        echo -n "Numéro > "
+        echo -n "Number > "
         read -r NUM
         SESSION="$(echo "$SESSIONS" | sed -n "${NUM}p")"
-        [[ -z "$SESSION" ]] && { echo "Choix invalide." >&2; exit 1; }
+        [[ -z "$SESSION" ]] && { echo "Invalid choice." >&2; exit 1; }
     fi
 
     if [[ "$BACKEND" == "tmux" ]]; then
-        tmux kill-session -t "$SESSION" 2>/dev/null && echo "Session $SESSION fermée." || echo "Pas de session $SESSION." >&2
+        tmux kill-session -t "$SESSION" 2>/dev/null && echo "Session $SESSION closed." || echo "No session $SESSION." >&2
     else
-        zellij delete-session "$SESSION" --force 2>/dev/null && echo "Session $SESSION fermée." || echo "Pas de session $SESSION." >&2
+        zellij delete-session "$SESSION" --force 2>/dev/null && echo "Session $SESSION closed." || echo "No session $SESSION." >&2
     fi
     exit 0
 fi
 
 if [[ "$ACTION" == "kill-all" ]]; then
     if [[ "$BACKEND" == "tmux" ]]; then
-        tmux kill-server 2>/dev/null && echo "Toutes les sessions tmux fermées." || echo "Aucune session active." >&2
+        tmux kill-server 2>/dev/null && echo "All tmux sessions closed." || echo "No active sessions." >&2
     else
-        zellij delete-all-sessions --force --yes 2>/dev/null && echo "Toutes les sessions Zellij fermées." || echo "Aucune session active." >&2
+        zellij delete-all-sessions --force --yes 2>/dev/null && echo "All Zellij sessions closed." || echo "No active sessions." >&2
     fi
     exit 0
 fi
@@ -505,29 +505,29 @@ if [[ "$ACTION" == "attach" ]]; then
             cd "$PROJECT_DIR"
             exec zellij attach "$PROJECT_NAME"
         else
-            echo "Pas de session $PROJECT_NAME. Sessions disponibles :" >&2
-            zellij list-sessions 2>/dev/null || echo "  (aucune)"
+            echo "No session $PROJECT_NAME. Available sessions:" >&2
+            zellij list-sessions 2>/dev/null || echo "  (none)"
             exit 1
         fi
     fi
 fi
 
 # =============================================
-# --open : plusieurs projets
+# --open: multiple projects
 # =============================================
 
 if [[ "$ACTION" == "open" ]]; then
-    [[ ${#OPEN_DIRS[@]} -eq 0 ]] && { echo "Usage : sand --open dir1 dir2 ..." >&2; exit 1; }
+    [[ ${#OPEN_DIRS[@]} -eq 0 ]] && { echo "Usage: sand --open dir1 dir2 ..." >&2; exit 1; }
 
-    # --- Mode Ghostty : un onglet Ghostty par projet ---
+    # --- Ghostty mode: one Ghostty tab per project ---
     if [[ "$BACKEND" == "ghostty" ]]; then
-        echo "Ouverture de ${#OPEN_DIRS[@]} onglet(s) Ghostty..."
+        echo "Opening ${#OPEN_DIRS[@]} Ghostty tab(s)..."
         SCRIPT='tell application "Ghostty" to activate
 delay 0.3
 tell application "System Events"
   tell process "Ghostty"'
         for dir in "${OPEN_DIRS[@]}"; do
-            dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
+            dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Directory not found: $dir" >&2; continue; }
             name="$(basename "$dir")"
             echo "  + $name"
             SCRIPT="$SCRIPT
@@ -541,17 +541,17 @@ tell application "System Events"
         SCRIPT="$SCRIPT
   end tell
 end tell"
-        osascript -e "$SCRIPT" 2>&1 || echo "Erreur osascript — vérifie les permissions Accessibilité."
+        osascript -e "$SCRIPT" 2>&1 || echo "osascript error — check Accessibility permissions."
         exit 0
     fi
 
-    # --- Mode Zellij (défaut) : un tab Zellij par projet ---
+    # --- Zellij mode (default): one Zellij tab per project ---
     TMPFILE="$(mktemp /tmp/sand-multi-XXXXXX)"
     trap 'rm -f "$TMPFILE"' EXIT
 
     echo "layout {" > "$TMPFILE"
     for dir in "${OPEN_DIRS[@]}"; do
-        dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Répertoire introuvable : $dir" >&2; continue; }
+        dir="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Directory not found: $dir" >&2; continue; }
         name="$(basename "$dir")"
         echo "  + $name"
         cat >> "$TMPFILE" <<TABEOF
@@ -580,19 +580,19 @@ TABEOF
     echo "}" >> "$TMPFILE"
 
     SESSION_NAME="sand-$(date +%H%M%S)"
-    echo "Lancement de ${#OPEN_DIRS[@]} tab(s) Zellij dans la session $SESSION_NAME..."
+    echo "Launching ${#OPEN_DIRS[@]} Zellij tab(s) in session $SESSION_NAME..."
     exec zellij --session "$SESSION_NAME" --new-session-with-layout "$TMPFILE"
 fi
 
 # =============================================
-# Lancement de session unique
+# Single session launch
 # =============================================
 
-# --- Backend tmux ---
+# --- tmux backend ---
 if [[ "$BACKEND" == "tmux" ]]; then
-    # Réattacher si la session existe
+    # Reattach if session exists
     if tmux has-session -t "$PROJECT_NAME" 2>/dev/null; then
-        echo "Session tmux $PROJECT_NAME existante — réattachement."
+        echo "Existing tmux session $PROJECT_NAME — reattaching."
         cd "$PROJECT_DIR"
         exec tmux attach-session -t "$PROJECT_NAME"
     fi
@@ -603,7 +603,7 @@ if [[ "$BACKEND" == "tmux" ]]; then
         exec tmux new-session -s "$PROJECT_NAME"
     fi
 
-    # Layout : Claude (gauche 60%) | lazygit + yazi (droite 40%)
+    # Layout: Claude (left 60%) | lazygit + yazi (right 40%)
     tmux new-session -d -s "$PROJECT_NAME" -x "$(tput cols)" -y "$(tput lines)"
     tmux split-window -h -t "$PROJECT_NAME" -p 40
     tmux split-window -v -t "$PROJECT_NAME:0.1"
@@ -613,16 +613,16 @@ if [[ "$BACKEND" == "tmux" ]]; then
     exec tmux attach-session -t "$PROJECT_NAME"
 fi
 
-# --- Backend Zellij (défaut) ---
+# --- Zellij backend (default) ---
 
-# Réattacher si la session existe
+# Reattach if session exists
 if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${PROJECT_NAME} "; then
-    echo "Session $PROJECT_NAME existante — réattachement."
+    echo "Existing session $PROJECT_NAME — reattaching."
     cd "$PROJECT_DIR"
     exec zellij attach "$PROJECT_NAME"
 fi
 
-# Choisir le layout
+# Choose layout
 if [[ "$LAYOUT" == "solo" ]]; then
     LAYOUT_FILE="${LAYOUT_DIR}/sand-solo.kdl"
 elif [[ "$TIPS" == true ]]; then
@@ -658,7 +658,7 @@ else
 fi
 
 if [[ ! -f "$LAYOUT_FILE" ]]; then
-    echo "Layout introuvable : $LAYOUT_FILE" >&2
+    echo "Layout not found: $LAYOUT_FILE" >&2
     exit 1
 fi
 
