@@ -249,13 +249,13 @@ cd sand && ./install.sh
 
 - [x] `bin/sand` supports `SAND_LIBEXEC` env var for path resolution
 - [x] Existing dev workflow (`./install.sh` symlink) still works unchanged
-- [ ] `arsis-dev/homebrew-tap` repo exists with `Formula/sand.rb`
-- [ ] `brew install arsis-dev/tap/sand` installs sand and its recommended deps
-- [ ] `sand`, `sand-workspace-helper`, `sand-notify` are all in PATH after brew install
-- [ ] `sand neverresume` works after Homebrew install (workspace TOML + layouts found)
+- [x] `arsis-dev/homebrew-tap` repo exists with `Formula/sand.rb`
+- [x] `brew install arsis-dev/tap/sand` installs sand and its recommended deps
+- [x] `sand`, `sand-workspace-helper`, `sand-notify` are all in PATH after brew install
+- [x] `sand neverresume` works after Homebrew install (workspace TOML + layouts found)
 - [ ] `curl -fsSL .../install.sh | bash` works on a clean machine with just Homebrew
 - [x] README updated with the 3 install options
-- [ ] Git tag `v0.1.0` published
+- [x] Git tag `v0.1.0` published
 
 ## Dependencies & Risks
 
