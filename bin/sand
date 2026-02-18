@@ -21,8 +21,15 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SCRIPT_DIR}/../layouts}"
+# --- Path resolution (Homebrew-compatible via SAND_LIBEXEC) ---
+if [ -n "${SAND_LIBEXEC:-}" ]; then
+    LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SAND_LIBEXEC}/layouts}"
+    HELPER="${SAND_LIBEXEC}/sand-workspace-helper"
+else
+    SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+    LAYOUT_DIR="${SAND_LAYOUT_DIR:-${SCRIPT_DIR}/../layouts}"
+    HELPER="${SCRIPT_DIR}/sand-workspace-helper"
+fi
 WORKSPACES_DIR="${SAND_WORKSPACES_DIR:-${HOME}/.config/sand/workspaces}"
 
 # --- Argument parsing ---
@@ -35,7 +42,6 @@ OPEN_DIRS=()
 TIPS=false
 WS_SUBCOMMAND=""
 WS_ARGS=()
-HELPER="${SCRIPT_DIR}/sand-workspace-helper"
 
 for arg in "$@"; do
     case "$arg" in
