@@ -256,23 +256,41 @@ if [[ -n "$WORKSPACE" ]]; then
         exit 1
     fi
 
-    # Réattacher si la session existe déjà
-    if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${WORKSPACE} "; then
-        echo "Workspace $WORKSPACE existant — réattachement."
-        exec zellij attach "$WORKSPACE"
+    if [[ "$BACKEND" == "tmux" ]]; then
+        # --- Backend tmux ---
+        if tmux has-session -t "$WORKSPACE" 2>/dev/null; then
+            echo "Session tmux $WORKSPACE existante — réattachement."
+            exec tmux attach-session -t "$WORKSPACE"
+        fi
+
+        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.sh)"
+        trap 'rm -f "$TMPFILE"' EXIT
+
+        if ! python3 "$HELPER" render-tmux "$TOML_FILE" --session "$WORKSPACE" > "$TMPFILE"; then
+            echo "Erreur lors de la génération tmux pour $WORKSPACE" >&2
+            exit 1
+        fi
+
+        echo "Lancement du workspace $WORKSPACE (tmux)..."
+        exec bash "$TMPFILE"
+    else
+        # --- Backend Zellij (défaut) ---
+        if zellij list-sessions --no-formatting 2>/dev/null | grep -q "^${WORKSPACE} "; then
+            echo "Workspace $WORKSPACE existant — réattachement."
+            exec zellij attach "$WORKSPACE"
+        fi
+
+        TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.kdl)"
+        trap 'rm -f "$TMPFILE"' EXIT
+
+        if ! python3 "$HELPER" render "$TOML_FILE" > "$TMPFILE"; then
+            echo "Erreur lors de la génération du layout pour $WORKSPACE" >&2
+            exit 1
+        fi
+
+        echo "Lancement du workspace $WORKSPACE..."
+        exec zellij --session "$WORKSPACE" --new-session-with-layout "$TMPFILE"
     fi
-
-    # Générer le layout KDL via le helper Python
-    TMPFILE="$(mktemp /tmp/sand-ws-XXXXXX.kdl)"
-    trap 'rm -f "$TMPFILE"' EXIT
-
-    if ! python3 "$HELPER" render "$TOML_FILE" > "$TMPFILE"; then
-        echo "Erreur lors de la génération du layout pour $WORKSPACE" >&2
-        exit 1
-    fi
-
-    echo "Lancement du workspace $WORKSPACE..."
-    exec zellij --session "$WORKSPACE" --new-session-with-layout "$TMPFILE"
 fi
 
 PROJECT_DIR="${PROJECT_DIR:-.}"

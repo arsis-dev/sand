@@ -145,6 +145,92 @@ def _generate_tab_kdl(tab, root=None):
     return '\n'.join(lines)
 
 
+def _panel_tmux_cmd(panel, cwd):
+    """Retourne la commande à envoyer dans un pane tmux pour un panel."""
+    app = panel.get("app", "")
+    command = panel.get("command", "")
+
+    if command:
+        return command
+    elif app == "shell" or (not app and not command):
+        return ""
+    elif app in APPS_CATALOG:
+        info = APPS_CATALOG[app]
+        cmd = info["cmd"]
+        args = info["args"]
+        if cmd and not shutil.which(cmd):
+            brew = info.get("brew", "")
+            msg = f"App non trouvée : {app}"
+            if brew:
+                msg += f" — brew install {brew}"
+            return f"echo '{msg}'"
+        if app == "yazi":
+            return f"{cmd} {cwd}"
+        if args:
+            return f"{cmd} {args}"
+        return cmd
+    else:
+        return app
+
+
+def _generate_tab_tmux(session, tab_index, tab, root=None):
+    """Génère les commandes tmux pour un tab."""
+    name = tab["name"]
+    cwd = _resolve_dir(tab["dir"], root)
+    layout = tab.get("layout", "default")
+    panels = tab.get("panels", DEFAULT_PANELS)
+    lines = []
+
+    if tab_index == 0:
+        lines.append(f'tmux new-session -d -s "{session}" -c "{cwd}" -x "$(tput cols)" -y "$(tput lines)"')
+        lines.append(f'tmux rename-window -t "{session}:0" "{name}"')
+    else:
+        lines.append(f'tmux new-window -t "{session}" -n "{name}" -c "{cwd}"')
+
+    window = f"{session}:{tab_index}"
+
+    if layout == "solo":
+        pass  # un seul pane, rien à faire
+
+    elif layout == "wide":
+        # Terminal en haut, panels en bas (split horizontal)
+        lines.append(f'tmux split-window -v -t "{window}.0" -c "{cwd}" -p 30')
+        pane_base = 1
+        for i, p in enumerate(panels):
+            if i > 0:
+                lines.append(f'tmux split-window -h -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
+            cmd = _panel_tmux_cmd(p, cwd)
+            if cmd:
+                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
+
+    elif layout == "monitoring":
+        # Terminal à gauche (60%), panels empilés à droite (40%)
+        lines.append(f'tmux split-window -h -t "{window}.0" -c "{cwd}" -p 40')
+        pane_base = 1
+        for i, p in enumerate(panels):
+            if i > 0:
+                lines.append(f'tmux split-window -v -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
+            cmd = _panel_tmux_cmd(p, cwd)
+            if cmd:
+                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
+
+    else:
+        # "default" : terminal (60%) | panels empilés (40%)
+        lines.append(f'tmux split-window -h -t "{window}.0" -c "{cwd}" -p 40')
+        pane_base = 1
+        for i, p in enumerate(panels):
+            if i > 0:
+                lines.append(f'tmux split-window -v -t "{window}.{pane_base + i - 1}" -c "{cwd}"')
+            cmd = _panel_tmux_cmd(p, cwd)
+            if cmd:
+                lines.append(f'tmux send-keys -t "{window}.{pane_base + i}" "{cmd}" Enter')
+
+    # Sélectionner le pane principal (terminal)
+    lines.append(f'tmux select-pane -t "{window}.0"')
+
+    return '\n'.join(lines)
+
+
 # ─── Commandes ───────────────────────────────────────────────────────
 
 def cmd_render(args):
@@ -171,6 +257,36 @@ def cmd_render(args):
     kdl_lines.append("}")
 
     print('\n'.join(kdl_lines))
+
+
+def cmd_render_tmux(args):
+    """Convertit un fichier TOML workspace en script tmux."""
+    toml_path = Path(args.file)
+    if not toml_path.exists():
+        print(f"Fichier introuvable : {toml_path}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(toml_path, 'rb') as f:
+        config = tomllib.load(f)
+
+    workspace = config.get("workspace", {})
+    session = args.session or workspace.get("name", toml_path.stem)
+    root = workspace.get("root", None)
+    tabs = config.get("tabs", [])
+
+    if not tabs:
+        print("Aucun tab défini dans le workspace", file=sys.stderr)
+        sys.exit(1)
+
+    lines = [f'#!/bin/bash', f'# Généré par sand-workspace-helper pour la session tmux "{session}"']
+    for i, tab in enumerate(tabs):
+        lines.append(_generate_tab_tmux(session, i, tab, root))
+
+    # Sélectionner la première fenêtre et attacher
+    lines.append(f'tmux select-window -t "{session}:0"')
+    lines.append(f'exec tmux attach-session -t "{session}"')
+
+    print('\n'.join(lines))
 
 
 def cmd_validate(args):
@@ -519,6 +635,11 @@ def main():
     render = sub.add_parser('render', help='Convertit un .toml en layout KDL')
     render.add_argument('file', help='Fichier workspace .toml')
 
+    # render-tmux
+    render_tmux = sub.add_parser('render-tmux', help='Convertit un .toml en script tmux')
+    render_tmux.add_argument('file', help='Fichier workspace .toml')
+    render_tmux.add_argument('--session', help='Nom de la session tmux')
+
     # validate
     validate = sub.add_parser('validate', help='Vérifie un workspace .toml')
     validate.add_argument('file', help='Fichier workspace .toml')
@@ -543,6 +664,7 @@ def main():
 
     commands = {
         'render': cmd_render,
+        'render-tmux': cmd_render_tmux,
         'validate': cmd_validate,
         'migrate': cmd_migrate,
         'catalog': cmd_catalog,

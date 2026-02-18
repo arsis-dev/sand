@@ -174,7 +174,7 @@ Pour la v1 : le TOML génère du KDL (Zellij). En mode tmux, on génère les com
 - [x] Les 4 layouts presets génèrent du KDL valide
 - [x] Le catalogue d'apps est affiché dans le wizard avec détection d'installation
 - [x] Les panels custom (`command = "..."`) fonctionnent
-- [ ] Le fallback tmux produit un layout fonctionnel (simplifié)
+- [x] Le fallback tmux produit un layout fonctionnel (simplifié)
 - [x] Le workspace `diderot` migré produit exactement le même layout qu'avant
 
 ## Fichiers impactés
