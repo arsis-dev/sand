@@ -14,8 +14,9 @@ layout {
             pane size="70%" {
                 // Terminal principal (Claude Code, etc.)
             }
-            pane size="30%" {
-                // Terminal secondaire
+            pane split_direction="vertical" size="30%" {
+                pane // Terminal secondaire gauche
+                pane // Terminal secondaire droit
             }
         }
 
