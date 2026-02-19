@@ -23,7 +23,6 @@ install_from_source() {
     cp -R "$src_dir/bin" "$INSTALL_DIR/"
     cp -R "$src_dir/layouts" "$INSTALL_DIR/"
     cp -R "$src_dir/notify" "$INSTALL_DIR/"
-    [ -d "$src_dir/synth" ] && cp -R "$src_dir/synth" "$INSTALL_DIR/"
 
     create_symlinks
 }
@@ -48,7 +47,6 @@ install_from_remote() {
     cp -R "$tmpdir/bin" "$INSTALL_DIR/"
     cp -R "$tmpdir/layouts" "$INSTALL_DIR/"
     cp -R "$tmpdir/notify" "$INSTALL_DIR/"
-    [ -d "$tmpdir/synth" ] && cp -R "$tmpdir/synth" "$INSTALL_DIR/"
 
     create_symlinks
 }
@@ -59,10 +57,6 @@ create_symlinks() {
         ln -sf "${INSTALL_DIR}/bin/${cmd}" "${BIN_DIR}/${cmd}"
     done
     ln -sf "${INSTALL_DIR}/notify/notify.sh" "${BIN_DIR}/sand-notify"
-
-    # sand-synth (optional, may not exist in future versions)
-    [ -f "${INSTALL_DIR}/bin/sand-synth" ] && \
-        ln -sf "${INSTALL_DIR}/bin/sand-synth" "${BIN_DIR}/sand-synth"
 
     check_path
     info "sand installed to ${INSTALL_DIR}"

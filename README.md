@@ -13,16 +13,13 @@ Inspired by [Daniel Avila](https://x.com/dani_avila7)'s **SAND** mnemonic (**S**
 - **Interactive wizard** — `sand workspace new` with fzf support
 - **Auto sub-project detection** — parent directory with multiple git repos opens a multi-tab session
 - **Notification sounds** — macOS notifications with custom sound packs when Claude Code stops or asks a question
-- **Sound synthesis** — `sand-synth` generates psychoacoustic notification sounds from declarative presets
-
 ## Tech Stack
 
 - **Shell**: Bash (main script)
-- **Python**: 3.11+ (workspace helper, sound synthesis)
+- **Python**: 3.11+ (workspace helper)
 - **Multiplexers**: Zellij, tmux
 - **Layout format**: KDL (Zellij), tmux commands
 - **Config format**: TOML (workspaces)
-- **Audio**: numpy (synthesis), AIFF 16-bit mono (output)
 - **Platform**: macOS (notifications use `terminal-notifier`)
 
 ## Prerequisites
@@ -138,36 +135,22 @@ sand myproject
 | `sand-notify test [stop\|question]` | Test a notification |
 | `sand-notify add <pack> <type> <file>` | Add a sound to a pack |
 
-### Sound Synthesis
-
-| Command | Description |
-|---------|-------------|
-| `sand-synth presets` | List available presets |
-| `sand-synth generate <preset> [output.aiff]` | Generate a sound file |
-| `sand-synth play <preset>` | Generate and play a sound |
-| `sand-synth pack <name>` | Generate a full sound pack |
-
 ## Architecture
 
 ```
 sand/
 ├── bin/
-│   ├── sand                    # Main entry point (Bash, 666 lines)
-│   ├── sand-workspace-helper   # TOML parsing, KDL/tmux generation, wizard (Python, 719 lines)
-│   └── sand-synth              # Sound generator CLI (Python, 166 lines)
+│   ├── sand                    # Main entry point (Bash)
+│   └── sand-workspace-helper   # TOML parsing, KDL/tmux generation, wizard (Python)
 ├── layouts/
 │   ├── sand.kdl                # Default Zellij layout (terminal 60% + panels 40%)
 │   └── sand-solo.kdl           # Solo layout (single terminal)
-├── synth/
-│   ├── engine.py               # Audio synthesis engine (numpy, AIFF writer)
-│   └── presets.json            # Declarative sound presets (8 presets)
 ├── notify/
 │   ├── notify.sh               # Notification sound pack manager
 │   └── Sand.app/               # Stub macOS app for notification identity
 ├── docs/
-│   ├── sound-design.md         # Psychoacoustic design reference
 │   └── plans/                  # Implementation plans
-└── install.sh                  # Symlinks sand to ~/.local/bin
+└── install.sh                  # Installer (source or remote)
 ```
 
 ### How It Works
@@ -262,16 +245,7 @@ Claude Code hook fires
 
 Sound packs live in `~/.config/sand/sounds/<pack>/{stop,question,tool}/`. Files are synced to `~/Library/Sounds/` so macOS notifications can play them.
 
-### Sound Synthesis Pipeline
-
-```
-synth/presets.json          Declarative preset definitions
-  → synth/engine.py         numpy signal generation (harmonics, envelopes)
-    → AIFF 16-bit mono      Manual AIFF writing via struct (no aifc dependency)
-      → ~/.config/sand/sounds/<pack>/
-```
-
-Each preset defines either a single `tone` (frequency + harmonics + decay) or a `sequence` (multiple notes with time offsets). The engine applies exponential decay envelopes, anti-click fade-in (2ms), and fade-out (10% of duration).
+Sound packs can be generated with [sand-synth](https://github.com/arsis-dev/sand-synth) (separate project).
 
 ## Config Files
 
