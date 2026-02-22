@@ -124,17 +124,19 @@ def _generate_tab_kdl(tab, root=None):
         lines.append('        }')
 
     elif layout == "stack":
-        # Large left pane (60%) with small bottom + right column with 3 stacked panels (40%)
+        # Large left pane (60%) with small bottom + right column always 3 stacked panes (40%)
+        right_panels = list(panels) if panels else []
+        while len(right_panels) < 3:
+            right_panels.append({"app": "shell"})
         lines.append('        pane split_direction="vertical" {')
         lines.append('            pane split_direction="horizontal" size="60%" {')
         lines.append(f'                pane size="80%" cwd="{cwd}"')
         lines.append(f'                pane size="20%" cwd="{cwd}"')
         lines.append('            }')
-        if panels:
-            lines.append('            pane split_direction="horizontal" size="40%" {')
-            for p in panels:
-                lines.append(_panel_to_kdl(p, cwd, indent=16))
-            lines.append('            }')
+        lines.append('            pane split_direction="horizontal" size="40%" {')
+        for p in right_panels[:3]:
+            lines.append(_panel_to_kdl(p, cwd, indent=16))
+        lines.append('            }')
         lines.append('        }')
 
     else:
@@ -237,18 +239,21 @@ def _generate_tab_tmux(session, tab_index, tab, root=None):
         lines.append('tmux select-pane -t "{left}"')
 
     elif layout == "stack":
-        # Left column: main (80%) + small bottom (20%), right column: stacked panels (40%)
+        # Left column: main (80%) + small bottom (20%), right column: always 3 stacked panes (40%)
+        right_panels = list(panels) if panels else []
+        while len(right_panels) < 3:
+            right_panels.append({"app": "shell"})
+        right_panels = right_panels[:3]
         # Split right column first
         lines.append(f'tmux split-window -h -c "{cwd}" -p 40')
-        if panels:
-            cmd = _panel_tmux_cmd(panels[0], cwd)
+        cmd = _panel_tmux_cmd(right_panels[0], cwd)
+        if cmd:
+            lines.append(f'tmux send-keys "{cmd}" Enter')
+        for p in right_panels[1:]:
+            lines.append(f'tmux split-window -v -c "{cwd}"')
+            cmd = _panel_tmux_cmd(p, cwd)
             if cmd:
                 lines.append(f'tmux send-keys "{cmd}" Enter')
-            for p in panels[1:]:
-                lines.append(f'tmux split-window -v -c "{cwd}"')
-                cmd = _panel_tmux_cmd(p, cwd)
-                if cmd:
-                    lines.append(f'tmux send-keys "{cmd}" Enter')
         # Go to left pane and split bottom (20%)
         lines.append('tmux select-pane -t "{left}"')
         lines.append(f'tmux split-window -v -c "{cwd}" -p 20')
