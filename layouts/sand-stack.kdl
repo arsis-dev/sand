@@ -1,0 +1,27 @@
+// sand-stack.kdl — Layout with large left pane, small bottom-left, and 3-pane right column
+// Usage: zellij --layout sand-stack --session mon-projet
+
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:compact-bar"
+    }
+
+    pane split_direction="vertical" {
+        // Left column ~60%: main terminal + small bottom pane
+        pane split_direction="horizontal" size="60%" {
+            pane size="80%" {
+                // Main terminal (Claude Code, etc.)
+            }
+            pane size="20%" {
+                // Small bottom pane
+            }
+        }
+
+        // Right column ~40%: 3 panes stacked
+        pane split_direction="horizontal" size="40%" {
+            pane // Top
+            pane // Middle
+            pane // Bottom
+        }
+    }
+}
